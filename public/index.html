@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<title>OZ 오쇼젠타로</title>
+<link rel="stylesheet" href="/css/style.css"/>
+<link rel="manifest" href="/manifest.json"/>
+<meta name="theme-color" content="#c17148"/>
+<link rel="icon" href="/icons/icon-192.png"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png"/>
+<style>
+  .home-wrap { display: flex; flex-direction: column; min-height: calc(100dvh - 84px); }
+  .home-main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; gap: 20px; text-align: center; }
+  .home-title { font-size: 24px; line-height: 1.4; }
+  .home-sub { font-size: 13.5px; color: var(--muted-foreground); }
+  .home-input-bar { border-top: 0.8px solid var(--border); background: rgba(255,255,255,.6); padding: 16px; position: sticky; bottom: 84px; }
+  .input-row { display: flex; align-items: flex-end; gap: 10px; background: var(--card); border: 0.8px solid var(--border); border-radius: 20px; padding: 10px 10px 10px 16px; max-width: 560px; margin: 0 auto; }
+  .input-row textarea { flex: 1; resize: none; border: none; background: transparent; font-family: inherit; font-size: 14px; line-height: 1.5; max-height: 100px; outline: none; }
+  .send-btn { flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .send-btn:disabled { background: var(--muted); color: var(--muted-foreground); }
+  .footer-credit { text-align: center; padding: 6px 0 4px; font-size: 10px; color: rgba(140,128,114,.5); }
+  .footer-credit a { color: rgba(140,128,114,.7); }
+  .limit-box { text-align: center; padding: 40px 20px; }
+  .limit-box .ic { font-size: 34px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/index.html" class="brand">OZ <span>✦</span> 오쇼젠타로</a>
+  <div class="topbar-actions">
+    <span class="badge badge-free" id="roleBadge">불러오는 중</span>
+  </div>
+</div>
+
+<div class="home-wrap">
+  <div class="home-main" id="moodView">
+    <div>
+      <h1 class="home-title">오늘 어떤 감정을<br/>느끼고 계신가요?</h1>
+      <p class="home-sub mt-8">마음을 나눠주시면 카드가 말을 건넵니다</p>
+    </div>
+    <div class="chip-grid" id="emotionChips"></div>
+  </div>
+
+  <div class="limit-box" id="limitBox" style="display:none;">
+    <div class="ic">🌙</div>
+    <p><strong>비회원은 하루 1회만 무료로 이용하실 수 있어요.</strong></p>
+    <p class="muted small mt-8">회원가입하시면 계속 오쇼젠 카드를 만나보실 수 있어요.<br/>가입은 1분이면 충분해요.</p>
+    <div style="max-width:280px;margin:20px auto 0;">
+      <a href="/auth.html" class="btn btn-primary btn-block">무료로 회원가입하기</a>
+    </div>
+  </div>
+
+  <div class="home-input-bar" id="inputBar">
+    <div class="input-row">
+      <textarea id="emotionInput" rows="1" placeholder="지금 느끼는 감정을 편하게 적어보세요..."></textarea>
+      <button class="send-btn" id="drawBtn" disabled>↑</button>
+    </div>
+  </div>
+  <p class="footer-credit">© 주식회사 오즈마(ozma) · 문의 <a href="mailto:ozmaj@naver.com">ozmaj@naver.com</a></p>
+</div>
+
+<script type="module">
+import { getSession, getMember, renderBottomNav } from '/js/app.js';
+
+renderBottomNav('/index.html');
+
+const EMOTION_EXAMPLES = [
+  { emoji: '😔', text: '오늘 많이 지쳐있어요' },
+  { emoji: '💫', text: '설레지만 두렵기도 해요' },
+  { emoji: '🌙', text: '혼자인 것 같아 외로워요' },
+  { emoji: '🌫️', text: '앞길이 막막하게 느껴져요' },
+  { emoji: '🫧', text: '누군가가 그리워요' },
+  { emoji: '🌿', text: '작은 것에도 감사함을 느껴요' },
+  { emoji: '🫀', text: '불안하고 초조한 마음이에요' },
+  { emoji: '🌱', text: '변화가 필요한 것 같아요' },
+];
+
+const chipGrid = document.getElementById('emotionChips');
+const input = document.getElementById('emotionInput');
+const drawBtn = document.getElementById('drawBtn');
+
+chipGrid.innerHTML = EMOTION_EXAMPLES.map(ex => `<button type="button" class="chip" data-text="${ex.text}">${ex.emoji} ${ex.text}</button>`).join('');
+chipGrid.querySelectorAll('.chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    input.value = chip.dataset.text;
+    input.dispatchEvent(new Event('input'));
+    input.focus();
+  });
+});
+
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+  drawBtn.disabled = !input.value.trim();
+});
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Anonymous visitors: 1 free reading per day, tracked locally. Any logged-in
+// member gets unlimited readings — no daily cap once you have an account.
+let session = null;
+let member = null;
+
+async function canDrawToday() {
+  if (session) return true;
+  const raw = localStorage.getItem('ot_free_draw');
+  if (!raw) return true;
+  try {
+    const { date, count } = JSON.parse(raw);
+    return date !== today() || count < 1;
+  } catch {
+    return true;
+  }
+}
+
+function recordAnonDraw() {
+  if (session) return;
+  const raw = localStorage.getItem('ot_free_draw');
+  let count = 1;
+  try {
+    const parsed = raw ? JSON.parse(raw) : null;
+    count = parsed && parsed.date === today() ? parsed.count + 1 : 1;
+  } catch {}
+  localStorage.setItem('ot_free_draw', JSON.stringify({ date: today(), count }));
+}
+
+async function draw() {
+  const emotion = input.value.trim();
+  if (!emotion) return;
+
+  if (!(await canDrawToday())) {
+    document.getElementById('moodView').style.display = 'none';
+    document.getElementById('inputBar').style.display = 'none';
+    document.getElementById('limitBox').style.display = 'block';
+    return;
+  }
+
+  recordAnonDraw();
+  sessionStorage.setItem('__pending_reading', JSON.stringify({ emotion }));
+  window.location.href = '/reading.html';
+}
+
+drawBtn.addEventListener('click', draw);
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    draw();
+  }
+});
+
+(async () => {
+  session = await getSession();
+  const roleBadge = document.getElementById('roleBadge');
+  if (!session) {
+    roleBadge.textContent = '비로그인 · 무료 1회/일';
+    roleBadge.className = 'badge badge-free';
+    return;
+  }
+  member = await getMember(session);
+  if (!member) { roleBadge.textContent = '오류'; return; }
+  if (member.role === 'student') {
+    roleBadge.textContent = '🎓 정규 수강생 · 무제한';
+    roleBadge.className = 'badge badge-student';
+  } else {
+    roleBadge.textContent = '회원 · 무제한';
+    roleBadge.className = 'badge badge-active';
+  }
+})();
+</script>
+</body>
+</html>

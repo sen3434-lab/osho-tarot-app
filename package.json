@@ -1,0 +1,20 @@
+{
+  "name": "osho-tarot-app",
+  "version": "1.0.0",
+  "description": "오쇼젠 타로 — 감정 기반 오쇼젠 타로 리딩",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node data/seed-osho-cards.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  }
+}

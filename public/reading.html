@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<title>OZ 오쇼젠타로 · 리딩</title>
+<link rel="stylesheet" href="/css/style.css"/>
+<link rel="manifest" href="/manifest.json"/>
+<meta name="theme-color" content="#c17148"/>
+<link rel="icon" href="/icons/icon-192.png"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png"/>
+<style>
+  .r-header { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px; }
+  .r-header a { font-size: 13px; color: var(--muted-foreground); display: flex; align-items: center; gap: 4px; }
+  .r-actions { display: flex; gap: 8px; }
+  .card-name-block { text-align: center; margin-top: 14px; }
+  .card-name-block .ko { font-family: 'Noto Serif KR', serif; font-size: 17px; }
+  .card-name-block .en { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted-foreground); margin-top: 2px; }
+  .cursor-blink { display: inline-block; width: 2px; height: 14px; background: var(--primary); margin-left: 2px; vertical-align: middle; animation: blink 1s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .new-draw-cta { text-align: center; padding-top: 20px; }
+</style>
+</head>
+<body>
+
+<div class="r-header">
+  <a href="/index.html">← 돌아가기</a>
+  <div class="r-actions">
+    <button class="icon-btn" id="shareBtn">공유</button>
+    <button class="icon-btn" id="saveBtn">저장</button>
+  </div>
+</div>
+
+<div class="container" style="padding-top:8px;">
+  <div id="loadingView" class="center" style="padding: 60px 20px;">
+    <div class="spinner"></div>
+    <p class="muted small mt-16">타로가 카드를 들여다보고 있어요...</p>
+  </div>
+
+  <div id="resultView" style="display:none;">
+    <div class="tarot-card lg" id="tarotCard">
+      <div class="tarot-card-inner">
+        <div class="tarot-card-face tarot-card-back"><div class="medallion"></div></div>
+        <div class="tarot-card-face tarot-card-front">
+          <div class="tc-top"><span id="tcArcana"></span><span id="tcNum"></span></div>
+          <div class="tc-art"><img id="tcImg" src="" alt=""/></div>
+          <div class="tc-name"><div class="ko" id="tcNameKo"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-name-block">
+      <div class="ko" id="cardNameKo2"></div>
+      <div class="en" id="cardTopLabel2"></div>
+    </div>
+
+    <div class="reading-emotion">
+      <p>당신의 마음</p>
+      <div class="txt" id="emotionText"></div>
+    </div>
+
+    <div id="summaryBlock" class="reading-summary" style="display:none;"></div>
+    <div id="sectionsBlock"></div>
+
+    <div class="new-draw-cta">
+      <a href="/index.html" class="btn btn-primary">새 카드 뽑기</a>
+    </div>
+  </div>
+
+  <div id="errorView" style="display:none;" class="empty-state">
+    <div class="ic">🔮</div>
+    <p>리딩을 불러오지 못했어요.</p>
+    <a href="/index.html" class="btn btn-primary mt-16">홈으로</a>
+  </div>
+</div>
+
+<script type="module">
+import { getSb, getSession, showToast } from '/js/app.js';
+
+const raw = sessionStorage.getItem('__pending_reading');
+const loadingView = document.getElementById('loadingView');
+const resultView = document.getElementById('resultView');
+const errorView = document.getElementById('errorView');
+
+let currentCard = null;
+let currentEmotion = '';
+let currentInterpretation = '';
+
+function showError() {
+  loadingView.style.display = 'none';
+  resultView.style.display = 'none';
+  errorView.style.display = 'block';
+}
+
+function renderCard(card) {
+  document.getElementById('tcArcana').textContent = card.arcana === 'Major' ? 'MAJOR' : 'MINOR';
+  document.getElementById('tcNum').textContent = String(card.cardNum).padStart(2, '0');
+  document.getElementById('tcImg').src = card.imageUrl;
+  document.getElementById('tcImg').alt = card.name;
+  document.getElementById('tcNameKo').textContent = card.name;
+  document.getElementById('cardNameKo2').textContent = card.name;
+  document.getElementById('cardTopLabel2').textContent = card.topLabel || '';
+}
+
+function renderInterpretation(text) {
+  const parts = text.split(/\n\n+/);
+  const summary = (parts[0] || '').trim();
+  const rest = parts.slice(1).join('\n\n').trim();
+
+  const summaryBlock = document.getElementById('summaryBlock');
+  if (summary) {
+    summaryBlock.style.display = 'block';
+    summaryBlock.textContent = summary;
+  }
+
+  const sections = [];
+  let currentHeader = null;
+  let lines = [];
+  for (const line of rest.split('\n')) {
+    if (line.startsWith('◇ ')) {
+      if (lines.join('').trim() || currentHeader !== null) sections.push({ header: currentHeader, body: lines.join('\n').trim() });
+      currentHeader = line.slice(2).trim();
+      lines = [];
+    } else {
+      lines.push(line);
+    }
+  }
+  if (lines.join('').trim() || currentHeader !== null) sections.push({ header: currentHeader, body: lines.join('\n').trim() });
+
+  const sectionsBlock = document.getElementById('sectionsBlock');
+  sectionsBlock.innerHTML = '';
+  if (sections.length) {
+    const divider = document.createElement('div');
+    divider.className = 'reading-divider';
+    divider.textContent = '카드의 이야기';
+    sectionsBlock.appendChild(divider);
+  }
+  sections.forEach(s => {
+    const el = document.createElement('div');
+    el.className = 'reading-section';
+    el.innerHTML = (s.header ? `<div class="rs-header">${s.header}</div>` : '') +
+      `<div class="rs-body${s.header ? '' : ' center serif'}">${s.body}</div>`;
+    sectionsBlock.appendChild(el);
+  });
+}
+
+async function run() {
+  if (!raw) { window.location.href = '/index.html'; return; }
+  sessionStorage.removeItem('__pending_reading');
+  let emotion;
+  try {
+    ({ emotion } = JSON.parse(raw));
+  } catch {
+    window.location.href = '/index.html';
+    return;
+  }
+  currentEmotion = emotion;
+  document.getElementById('emotionText').textContent = `"${emotion}"`;
+
+  try {
+    const res = await fetch('/api/reading', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emotion }),
+    });
+    if (!res.ok) throw new Error('reading failed');
+    const data = await res.json();
+    currentCard = data.card;
+    currentInterpretation = data.interpretation;
+
+    loadingView.style.display = 'none';
+    resultView.style.display = 'block';
+    renderCard(data.card);
+    requestAnimationFrame(() => {
+      document.getElementById('tarotCard').classList.add('flipped');
+    });
+    setTimeout(() => renderInterpretation(data.interpretation), 500);
+  } catch (err) {
+    console.error(err);
+    showError();
+  }
+}
+
+document.getElementById('shareBtn').addEventListener('click', async () => {
+  if (!currentCard) return;
+  const title = `오쇼젠 타로 — ${currentCard.name}`;
+  const text = `${currentCard.name}\n"${currentEmotion}"\n\n${currentInterpretation}`;
+  if (navigator.share) {
+    try { await navigator.share({ title, text }); return; } catch {}
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('클립보드에 복사했어요.');
+  } catch {
+    showToast('공유에 실패했어요.');
+  }
+});
+
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  if (!currentCard) return;
+  const session = await getSession();
+  if (!session) {
+    showToast('기록 저장은 로그인 후 이용하실 수 있어요.');
+    setTimeout(() => window.location.href = '/auth.html', 900);
+    return;
+  }
+  const sb = await getSb();
+  const { error } = await sb.from('readings').insert({
+    user_id: session.user.id,
+    card_id: currentCard.id,
+    mood_input: currentEmotion,
+    memo: JSON.stringify({ reading: currentInterpretation }),
+    app_key: 'oshozen-tarot',
+  });
+  if (error) {
+    console.error(error);
+    showToast('저장에 실패했어요.');
+  } else {
+    showToast('기록에 저장했어요 ✓');
+  }
+});
+
+run();
+</script>
+</body>
+</html>

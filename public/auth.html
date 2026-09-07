@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>OZ 오쇼젠타로 · 로그인</title>
+<link rel="stylesheet" href="/css/style.css"/>
+<link rel="manifest" href="/manifest.json"/>
+<meta name="theme-color" content="#c17148"/>
+<link rel="icon" href="/icons/icon-192.png"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png"/>
+<style>
+  body { padding-bottom: 40px; }
+  .auth-wrap { max-width: 380px; margin: 0 auto; padding: 60px 24px 40px; }
+  .auth-logo { text-align: center; margin-bottom: 8px; font-size: 15px; letter-spacing: 4px; color: var(--primary); font-weight: 600; }
+  .auth-title { text-align: center; font-size: 21px; margin-bottom: 6px; }
+  .auth-sub { text-align: center; color: var(--muted-foreground); font-size: 12.5px; margin-bottom: 30px; }
+  .tabs { display: flex; border: 0.8px solid var(--border); border-radius: var(--radius-pill); padding: 4px; margin-bottom: 24px; }
+  .tabs button { flex: 1; padding: 9px; border: none; background: transparent; border-radius: var(--radius-pill); font-size: 13px; color: var(--muted-foreground); }
+  .tabs button.active { background: var(--primary); color: #fff; font-weight: 500; }
+  .social-row { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+  .divider { display: flex; align-items: center; gap: 10px; margin: 22px 0; color: var(--muted-foreground); font-size: 11.5px; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 0.8px; background: var(--border); }
+  .err { color: var(--danger); font-size: 12.5px; margin-top: -8px; margin-bottom: 14px; display: none; }
+</style>
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-logo">OZ</div>
+  <div class="auth-title">오쇼젠 타로</div>
+  <div class="auth-sub">감정을 나누면, 카드가 말을 건넵니다</div>
+
+  <div class="tabs">
+    <button type="button" id="tabLogin" class="active">로그인</button>
+    <button type="button" id="tabSignup">회원가입</button>
+  </div>
+
+  <form id="authForm">
+    <div class="field" id="nicknameField" style="display:none;">
+      <label>이름 / 예명</label>
+      <input type="text" id="nickname" placeholder="OO님이라고 불러드릴게요"/>
+    </div>
+    <div class="field">
+      <label>이메일</label>
+      <input type="email" id="email" required placeholder="you@example.com"/>
+    </div>
+    <div class="field">
+      <label>비밀번호</label>
+      <input type="password" id="password" required placeholder="6자 이상" minlength="6"/>
+    </div>
+    <p class="err" id="errMsg"></p>
+    <button type="submit" class="btn btn-primary btn-block" id="submitBtn">로그인</button>
+  </form>
+
+  <div class="divider">또는</div>
+  <div class="social-row">
+    <button class="btn btn-outline btn-block" id="googleBtn">🟡 Google로 계속하기</button>
+  </div>
+</div>
+
+<script type="module">
+import { getSb, ensureMemberRow } from '/js/app.js';
+
+let mode = 'login';
+const tabLogin = document.getElementById('tabLogin');
+const tabSignup = document.getElementById('tabSignup');
+const submitBtn = document.getElementById('submitBtn');
+const errMsg = document.getElementById('errMsg');
+
+function setMode(m) {
+  mode = m;
+  tabLogin.classList.toggle('active', m === 'login');
+  tabSignup.classList.toggle('active', m === 'signup');
+  submitBtn.textContent = m === 'login' ? '로그인' : '회원가입';
+  document.getElementById('nicknameField').style.display = m === 'signup' ? 'block' : 'none';
+  errMsg.style.display = 'none';
+}
+tabLogin.addEventListener('click', () => setMode('login'));
+tabSignup.addEventListener('click', () => setMode('signup'));
+
+document.getElementById('authForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const sb = await getSb();
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const nickname = document.getElementById('nickname').value.trim();
+  submitBtn.disabled = true;
+  submitBtn.textContent = '처리 중...';
+  errMsg.style.display = 'none';
+
+  try {
+    let result;
+    if (mode === 'login') {
+      result = await sb.auth.signInWithPassword({ email, password });
+    } else {
+      if (nickname) {
+        try { localStorage.setItem('ot_pending_nickname', nickname); } catch {}
+      }
+      result = await sb.auth.signUp({ email, password });
+    }
+    if (result.error) throw result.error;
+
+    if (mode === 'signup' && !result.data.session) {
+      errMsg.style.display = 'block';
+      errMsg.style.color = 'var(--accent-foreground)';
+      errMsg.textContent = '가입 확인 메일을 보냈습니다. 메일함을 확인해주세요.';
+      submitBtn.disabled = false;
+      submitBtn.textContent = '회원가입';
+      return;
+    }
+
+    if (result.data.session) {
+      await ensureMemberRow(result.data.session, nickname || undefined);
+    }
+    window.location.href = '/index.html';
+  } catch (err) {
+    errMsg.style.display = 'block';
+    errMsg.style.color = 'var(--danger)';
+    errMsg.textContent = err.message === 'Invalid login credentials'
+      ? '이메일 또는 비밀번호가 올바르지 않습니다.'
+      : (err.message || '오류가 발생했습니다.');
+    submitBtn.disabled = false;
+    submitBtn.textContent = mode === 'login' ? '로그인' : '회원가입';
+  }
+});
+
+async function signInWithProvider(provider) {
+  const sb = await getSb();
+  const { error } = await sb.auth.signInWithOAuth({
+    provider,
+    options: { redirectTo: window.location.origin + '/index.html' },
+  });
+  if (error) {
+    errMsg.style.display = 'block';
+    errMsg.style.color = 'var(--muted-foreground)';
+    errMsg.textContent = `${provider} 로그인이 아직 설정되지 않았어요. (${error.message})`;
+  }
+}
+document.getElementById('googleBtn').addEventListener('click', () => signInWithProvider('google'));
+</script>
+</body>
+</html>

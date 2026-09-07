@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>OZ 오쇼젠타로 · 수강생 인증</title>
+<link rel="stylesheet" href="/css/style.css"/>
+<link rel="manifest" href="/manifest.json"/>
+<meta name="theme-color" content="#c17148"/>
+<link rel="icon" href="/icons/icon-192.png"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png"/>
+<style>
+  .auth-wrap { max-width: 380px; margin: 0 auto; padding: 60px 24px 40px; }
+  .auth-title { text-align: center; font-size: 21px; margin-bottom: 6px; }
+  .auth-sub { text-align: center; color: var(--muted-foreground); font-size: 12.5px; margin-bottom: 30px; }
+  .err { color: var(--danger); font-size: 12.5px; margin-top: -8px; margin-bottom: 14px; display: none; }
+  .ok { color: var(--accent-foreground); font-size: 13px; margin-top: -8px; margin-bottom: 14px; display: none; }
+  .divider { display: flex; align-items: center; gap: 10px; margin: 26px 0; color: var(--muted-foreground); font-size: 11.5px; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 0.8px; background: var(--border); }
+  .pending-box { text-align: center; padding: 20px 16px; background: var(--secondary); border-radius: 14px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="center" style="font-size:30px;margin-bottom:8px;">🎓</div>
+  <div class="auth-title">정규 수강생 인증</div>
+  <div class="auth-sub">강의에서 안내받은 인증 코드를 입력하시면<br/>정규 수강생으로 등록됩니다</div>
+
+  <form id="verifyForm">
+    <div class="field">
+      <label>인증 코드</label>
+      <input type="text" id="code" required placeholder="예: OZMA-2026-XXXX"/>
+    </div>
+    <p class="err" id="errMsg"></p>
+    <p class="ok" id="okMsg"></p>
+    <button type="submit" class="btn btn-primary btn-block" id="submitBtn">인증하기</button>
+  </form>
+
+  <div class="divider">코드가 없으신가요?</div>
+
+  <div id="requestSection">
+    <form id="requestForm">
+      <div class="field">
+        <label>이름 (강사가 알아볼 수 있는 이름으로)</label>
+        <input type="text" id="reqName" required placeholder="홍길동"/>
+      </div>
+      <div class="field">
+        <label>메모 (선택 — 수강 시기 등)</label>
+        <input type="text" id="reqNote" placeholder="예: 2026년 3월 정규반"/>
+      </div>
+      <p class="err" id="reqErrMsg"></p>
+      <button type="submit" class="btn btn-outline btn-block" id="reqSubmitBtn">이름으로 인증 요청하기</button>
+    </form>
+  </div>
+
+  <div id="pendingBox" class="pending-box" style="display:none;"></div>
+
+  <p class="small muted center mt-24"><a href="/auth.html">← 로그인으로 돌아가기</a></p>
+</div>
+
+<script type="module">
+import { getSb, getSession, ensureMemberRow, APP_KEY } from '/js/app.js';
+
+const form = document.getElementById('verifyForm');
+const errMsg = document.getElementById('errMsg');
+const okMsg = document.getElementById('okMsg');
+const submitBtn = document.getElementById('submitBtn');
+
+const requestForm = document.getElementById('requestForm');
+const requestSection = document.getElementById('requestSection');
+const reqErrMsg = document.getElementById('reqErrMsg');
+const reqSubmitBtn = document.getElementById('reqSubmitBtn');
+const pendingBox = document.getElementById('pendingBox');
+
+async function checkExistingRequest(session) {
+  const sb = await getSb();
+  const { data } = await sb
+    .from('verification_requests')
+    .select('status')
+    .eq('member_id', session.user.id)
+    .eq('app_key', APP_KEY)
+    .maybeSingle();
+  if (!data) return;
+  if (data.status === 'pending') {
+    requestSection.style.display = 'none';
+    pendingBox.style.display = 'block';
+    pendingBox.textContent = '인증 요청을 확인 중이에요. 강사님 승인 후 자동으로 정규 수강생으로 등록됩니다.';
+  } else if (data.status === 'rejected') {
+    requestSection.style.display = 'none';
+    pendingBox.style.display = 'block';
+    pendingBox.textContent = '요청이 반려되었어요. 인증 코드를 받으셨다면 위에 입력해주세요.';
+  }
+}
+
+getSession().then((s) => { if (s) checkExistingRequest(s); });
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errMsg.style.display = 'none';
+  okMsg.style.display = 'none';
+
+  const session = await getSession();
+  if (!session) {
+    errMsg.style.display = 'block';
+    errMsg.textContent = '먼저 로그인 또는 회원가입을 해주세요.';
+    setTimeout(() => window.location.href = '/auth.html', 1200);
+    return;
+  }
+  await ensureMemberRow(session);
+
+  const code = document.getElementById('code').value.trim();
+  submitBtn.disabled = true;
+  submitBtn.textContent = '확인 중...';
+
+  const sb = await getSb();
+  const { data, error } = await sb.rpc('verify_student_code', { p_code: code, p_app_key: APP_KEY });
+
+  if (error || data !== true) {
+    errMsg.style.display = 'block';
+    errMsg.textContent = '유효하지 않거나 이미 사용된 코드입니다.';
+    submitBtn.disabled = false;
+    submitBtn.textContent = '인증하기';
+    return;
+  }
+
+  okMsg.style.display = 'block';
+  okMsg.textContent = '인증 완료! 정규 수강생으로 등록되었습니다 ✓';
+  submitBtn.textContent = '완료';
+  setTimeout(() => window.location.href = '/index.html', 1200);
+});
+
+requestForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  reqErrMsg.style.display = 'none';
+
+  const session = await getSession();
+  if (!session) {
+    reqErrMsg.style.display = 'block';
+    reqErrMsg.textContent = '먼저 로그인 또는 회원가입을 해주세요.';
+    setTimeout(() => window.location.href = '/auth.html', 1200);
+    return;
+  }
+  await ensureMemberRow(session);
+
+  const name = document.getElementById('reqName').value.trim();
+  const note = document.getElementById('reqNote').value.trim();
+  reqSubmitBtn.disabled = true;
+  reqSubmitBtn.textContent = '요청 중...';
+
+  const sb = await getSb();
+  const { error } = await sb.from('verification_requests').insert({
+    member_id: session.user.id,
+    app_key: APP_KEY,
+    name,
+    note: note || null,
+  });
+
+  if (error) {
+    reqErrMsg.style.display = 'block';
+    reqErrMsg.textContent = error.code === '23505'
+      ? '이미 요청을 보내셨어요. 강사님 승인을 기다려주세요.'
+      : '요청 중 오류가 발생했어요.';
+    reqSubmitBtn.disabled = false;
+    reqSubmitBtn.textContent = '이름으로 인증 요청하기';
+    return;
+  }
+
+  requestSection.style.display = 'none';
+  pendingBox.style.display = 'block';
+  pendingBox.textContent = '인증 요청을 보냈어요. 강사님 승인 후 자동으로 정규 수강생으로 등록됩니다.';
+});
+</script>
+</body>
+</html>

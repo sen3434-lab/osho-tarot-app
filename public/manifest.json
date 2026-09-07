@@ -1,0 +1,13 @@
+{
+  "name": "OZ 오쇼젠타로",
+  "short_name": "오쇼젠타로",
+  "description": "감정을 나누면 카드가 말을 건네는 오쇼젠 타로 리딩",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#f9f6f1",
+  "theme_color": "#c17148",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

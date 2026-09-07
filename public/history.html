@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>OZ 오쇼젠타로 · 기록</title>
+<link rel="stylesheet" href="/css/style.css"/>
+<link rel="manifest" href="/manifest.json"/>
+<meta name="theme-color" content="#c17148"/>
+<link rel="icon" href="/icons/icon-192.png"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png"/>
+<style>
+  .month-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+  .month-nav .m-title { font-size: 17px; font-family:'Noto Serif KR',serif; }
+  .month-nav button { background: var(--card); border: 0.8px solid var(--border); border-radius: 50%; width: 32px; height: 32px; font-size: 14px; }
+  .stats-row { display: flex; gap: 10px; margin-bottom: 20px; }
+  .stat { flex: 1; background: var(--card); border: 0.8px solid var(--border); border-radius: 12px; padding: 12px; text-align: center; }
+  .stat .n { font-size: 19px; font-weight: 600; color: var(--primary-dark); }
+  .stat .l { font-size: 11px; color: var(--muted-foreground); margin-top: 2px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 26px; }
+  .cal-dow { text-align: center; font-size: 10.5px; color: var(--muted-foreground); padding-bottom: 4px; }
+  .cal-cell { aspect-ratio: 1; border-radius: 10px; background: var(--card); border: 0.8px solid var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; position: relative; }
+  .cal-cell.empty { background: transparent; border: none; }
+  .cal-cell .d { font-size: 10px; color: var(--muted-foreground); position: absolute; top: 4px; left: 6px; }
+  .cal-cell.has-reading { background: rgba(193,113,72,.08); border-color: rgba(193,113,72,.35); }
+  .cal-cell .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); margin-top: 6px; }
+  .hi-reading { line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/index.html" class="brand">OZ <span>✦</span> 오쇼젠타로</a>
+</div>
+
+<div class="container">
+  <div id="gate" style="display:none;" class="empty-state">
+    <div class="ic">🔒</div>
+    <p>기록은 로그인 후 확인하실 수 있어요.</p>
+    <a href="/auth.html" class="btn btn-primary mt-16">로그인 하기</a>
+  </div>
+
+  <div id="content" style="display:none;">
+    <div class="month-nav">
+      <button id="prevM">‹</button>
+      <div class="m-title" id="mTitle"></div>
+      <button id="nextM">›</button>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat"><div class="n" id="statCount">0</div><div class="l">이번 달 리딩</div></div>
+      <div class="stat"><div class="n" id="statTop">-</div><div class="l">가장 많이 나온 카드</div></div>
+    </div>
+
+    <div class="cal-grid" id="calGrid"></div>
+
+    <div class="section-label">전체 기록</div>
+    <div id="histList"></div>
+    <div id="emptyList" class="empty-state" style="display:none;">
+      <div class="ic">🔮</div>
+      <p>이번 달 기록이 아직 없어요.</p>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { getSb, getSession, fmtDate, showToast, renderBottomNav } from '/js/app.js';
+
+renderBottomNav('/history.html');
+
+let cursor = new Date();
+cursor.setDate(1);
+
+async function init() {
+  const session = await getSession();
+  if (!session) {
+    document.getElementById('gate').style.display = 'block';
+    return;
+  }
+  document.getElementById('content').style.display = 'block';
+  await loadMonth(session);
+
+  document.getElementById('prevM').addEventListener('click', () => {
+    cursor.setMonth(cursor.getMonth() - 1);
+    loadMonth(session);
+  });
+  document.getElementById('nextM').addEventListener('click', () => {
+    cursor.setMonth(cursor.getMonth() + 1);
+    loadMonth(session);
+  });
+}
+
+async function loadMonth(session) {
+  const sb = await getSb();
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  document.getElementById('mTitle').textContent = `${year}년 ${month + 1}월`;
+
+  const startISO = new Date(year, month, 1).toISOString();
+  const endISO = new Date(year, month + 1, 1).toISOString();
+
+  const { data, error } = await sb
+    .from('readings')
+    .select('id, mood_input, memo, created_at, card_id, tarot_cards(id, name, image_url, keyword)')
+    .eq('user_id', session.user.id)
+    .eq('app_key', 'oshozen-tarot')
+    .gte('created_at', startISO)
+    .lt('created_at', endISO)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error(error);
+    showToast('기록을 불러오지 못했어요.');
+    return;
+  }
+
+  renderStats(data || []);
+  renderCalendar(year, month, data || []);
+  renderList(data || [], session);
+}
+
+function renderStats(rows) {
+  document.getElementById('statCount').textContent = rows.length;
+  const freq = {};
+  rows.forEach(r => {
+    const name = r.tarot_cards?.name;
+    if (name) freq[name] = (freq[name] || 0) + 1;
+  });
+  const top = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
+  document.getElementById('statTop').textContent = top ? top[0] : '-';
+}
+
+function renderCalendar(year, month, rows) {
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+  ['일','월','화','수','목','금','토'].forEach(d => {
+    const el = document.createElement('div');
+    el.className = 'cal-dow';
+    el.textContent = d;
+    grid.appendChild(el);
+  });
+
+  const byDay = {};
+  rows.forEach(r => {
+    const d = new Date(r.created_at).getDate();
+    (byDay[d] = byDay[d] || []).push(r);
+  });
+
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  for (let i = 0; i < firstDow; i++) {
+    const el = document.createElement('div');
+    el.className = 'cal-cell empty';
+    grid.appendChild(el);
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    const el = document.createElement('div');
+    const has = byDay[day];
+    el.className = 'cal-cell' + (has ? ' has-reading' : '');
+    el.innerHTML = `<span class="d">${day}</span>` + (has ? '<span class="dot"></span>' : '');
+    if (has) el.title = has.map(r => r.tarot_cards?.name).join(', ');
+    grid.appendChild(el);
+  }
+}
+
+function renderList(rows, session) {
+  const list = document.getElementById('histList');
+  const empty = document.getElementById('emptyList');
+  list.innerHTML = '';
+  if (!rows.length) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  rows.forEach(r => {
+    const card = r.tarot_cards || {};
+    let readingSnippet = '';
+    if (r.memo) {
+      try { readingSnippet = JSON.parse(r.memo).reading || ''; } catch {}
+    }
+    const item = document.createElement('div');
+    item.className = 'hist-item';
+    item.innerHTML = `
+      <img class="thumb" src="${card.image_url || ''}" alt=""/>
+      <div class="hi-body">
+        <div class="hi-date">${fmtDate(r.created_at)}</div>
+        <div class="hi-name">${card.name || ''} <span class="muted small">· ${card.keyword || ''}</span></div>
+        <div class="hi-mood">${r.mood_input ? '"' + r.mood_input + '"' : ''}</div>
+        ${readingSnippet ? `<div class="hi-reading small muted mt-8">${readingSnippet}</div>` : ''}
+      </div>
+      <div class="hi-actions">
+        <button data-id="${r.id}" class="delBtn" title="삭제">🗑️</button>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+
+  list.querySelectorAll('.delBtn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('이 기록을 삭제할까요?')) return;
+      const sb = await getSb();
+      const { error } = await sb.from('readings').delete().eq('id', btn.dataset.id);
+      if (error) { showToast('삭제에 실패했어요.'); return; }
+      showToast('삭제했어요.');
+      loadMonth(session);
+    });
+  });
+}
+
+init();
+</script>
+</body>
+</html>

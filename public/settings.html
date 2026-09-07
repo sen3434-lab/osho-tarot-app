@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>OZ 오쇼젠타로 · 설정</title>
+<link rel="stylesheet" href="/css/style.css"/>
+<link rel="manifest" href="/manifest.json"/>
+<meta name="theme-color" content="#c17148"/>
+<link rel="icon" href="/icons/icon-192.png"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png"/>
+<style>
+  .profile-head { text-align: center; padding: 10px 0 26px; }
+  .avatar { width: 62px; height: 62px; border-radius: 50%; background: var(--secondary); display: flex; align-items: center; justify-content: center; font-size: 26px; margin: 0 auto 12px; }
+  .profile-head .email { font-size: 14px; font-weight: 500; }
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 0.8px solid var(--border); font-size: 13.5px; }
+  .row:last-child { border-bottom: none; }
+  .row .rl { color: var(--muted-foreground); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/index.html" class="brand">OZ <span>✦</span> 오쇼젠타로</a>
+</div>
+
+<div class="container">
+  <div id="gate" style="display:none;" class="empty-state">
+    <div class="ic">🔒</div>
+    <p>설정은 로그인 후 확인하실 수 있어요.</p>
+    <a href="/auth.html" class="btn btn-primary mt-16">로그인 하기</a>
+  </div>
+
+  <div id="content" style="display:none;">
+    <div class="profile-head">
+      <div class="avatar">🙂</div>
+      <div class="email" id="userEmail"></div>
+      <span class="badge mt-8" id="roleBadge"></span>
+    </div>
+
+    <div class="section-label">계정</div>
+    <div class="card mb-24">
+      <div class="row">
+        <span class="rl">이름 / 예명</span>
+        <span style="display:flex;gap:6px;align-items:center;">
+          <input type="text" id="nameInput" placeholder="이름을 입력해주세요" style="border:0.8px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;width:120px;"/>
+          <button class="btn btn-outline btn-sm" id="saveNameBtn">저장</button>
+        </span>
+      </div>
+      <div class="row"><span class="rl">등급</span><span id="rowRole"></span></div>
+      <div class="row"><span class="rl">가입일</span><span id="rowJoined"></span></div>
+    </div>
+
+    <div id="generalSection">
+      <div class="section-label">일반</div>
+      <div class="card mb-24">
+        <div class="row" id="rowVerify">
+          <span class="rl">정규 수강생 인증</span>
+          <a href="/verify-student.html" class="btn btn-outline btn-sm">인증하기</a>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-outline btn-block" id="logoutBtn">로그아웃</button>
+  </div>
+</div>
+
+<script type="module">
+import { getSb, getSession, getMember, signOut, renderBottomNav, fmtDate, showToast } from '/js/app.js';
+renderBottomNav('/settings.html');
+
+let currentSession = null;
+
+async function init() {
+  const session = await getSession();
+  currentSession = session;
+  if (!session) {
+    document.getElementById('gate').style.display = 'block';
+    return;
+  }
+  document.getElementById('content').style.display = 'block';
+  document.getElementById('userEmail').textContent = session.user.email;
+
+  const member = await getMember(session);
+  if (!member) return;
+
+  document.getElementById('nameInput').value = member.display_name || '';
+
+  const roleLabel = member.role === 'student' ? '🎓 정규 수강생 · 무제한' : '회원 · 무제한';
+  document.getElementById('roleBadge').textContent = roleLabel;
+  document.getElementById('roleBadge').className = 'badge mt-8 ' + (member.role === 'student' ? 'badge-student' : 'badge-active');
+  document.getElementById('rowRole').textContent = roleLabel;
+  document.getElementById('rowJoined').textContent = member.created_at ? fmtDate(member.created_at) : '-';
+
+  document.getElementById('rowVerify').style.display = member.role === 'student' ? 'none' : 'flex';
+}
+init();
+
+document.getElementById('saveNameBtn').addEventListener('click', async () => {
+  if (!currentSession) return;
+  const name = document.getElementById('nameInput').value.trim();
+  const sb = await getSb();
+  const { error } = await sb.from('members').update({ display_name: name || null }).eq('id', currentSession.user.id);
+  if (error) {
+    showToast('저장에 실패했어요.');
+  } else {
+    showToast('이름을 저장했어요 ✓');
+  }
+});
+
+document.getElementById('logoutBtn').addEventListener('click', signOut);
+</script>
+</body>
+</html>
