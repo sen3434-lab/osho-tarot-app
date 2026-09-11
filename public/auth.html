@@ -100,6 +100,19 @@ document.getElementById('authForm').addEventListener('submit', async (e) => {
     }
     if (result.error) throw result.error;
 
+    // Supabase doesn't always error on signUp with an already-registered
+    // email (anti-enumeration behavior) — it can return a fake "success"
+    // with no session and an empty identities array instead.
+    if (mode === 'signup' && !result.data.session && result.data.user?.identities?.length === 0) {
+      setMode('login');
+      document.getElementById('email').value = email;
+      errMsg.style.display = 'block';
+      errMsg.style.color = 'var(--danger)';
+      errMsg.textContent = '이미 가입된 이메일이에요. 로그인 탭에서 로그인해주세요.';
+      submitBtn.disabled = false;
+      return;
+    }
+
     if (mode === 'signup' && !result.data.session) {
       errMsg.style.display = 'block';
       errMsg.style.color = 'var(--accent-foreground)';
@@ -114,11 +127,22 @@ document.getElementById('authForm').addEventListener('submit', async (e) => {
     }
     window.location.href = '/index.html';
   } catch (err) {
+    const msg = err.message || '';
+    if (/already registered|already exists|user already/i.test(msg)) {
+      setMode('login');
+      document.getElementById('email').value = email;
+    }
     errMsg.style.display = 'block';
     errMsg.style.color = 'var(--danger)';
-    errMsg.textContent = err.message === 'Invalid login credentials'
-      ? '이메일 또는 비밀번호가 올바르지 않습니다.'
-      : (err.message || '오류가 발생했습니다.');
+    if (msg === 'Invalid login credentials') {
+      errMsg.textContent = '이메일 또는 비밀번호가 올바르지 않습니다.';
+    } else if (/already registered|already exists|user already/i.test(msg)) {
+      errMsg.textContent = '이미 가입된 이메일이에요. 로그인 탭에서 로그인해주세요.';
+    } else if (err.status === 429 || /security purposes|rate limit|too many/i.test(msg)) {
+      errMsg.textContent = '요청이 너무 잦아요. 잠시 후(1분 정도) 다시 시도해주세요.';
+    } else {
+      errMsg.textContent = msg || '오류가 발생했습니다.';
+    }
     submitBtn.disabled = false;
     submitBtn.textContent = mode === 'login' ? '로그인' : '회원가입';
   }
