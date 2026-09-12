@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.ozma.oshozentarot",
+    "sha256_cert_fingerprints": [
+      "6E:92:7E:93:A6:61:4E:10:3A:18:62:A9:60:5B:6B:9D:6A:75:FC:4E:B6:6D:C4:6B:BC:C3:45:01:BE:3C:99:77"
+    ]
+  }
+}]
