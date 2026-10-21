@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-<title>OZ 오쇼젠타로 · 리딩</title>
+<title>OZ 무의식타로 · 리딩</title>
 <link rel="stylesheet" href="/css/style.css"/>
 <link rel="manifest" href="/manifest.json"/>
 <meta name="theme-color" content="#c17148"/>
@@ -182,7 +182,7 @@ async function run() {
 
 document.getElementById('shareBtn').addEventListener('click', async () => {
   if (!currentCard) return;
-  const title = `오쇼젠 타로 — ${currentCard.name}`;
+  const title = `무의식 타로 — ${currentCard.name}`;
   const text = `${currentCard.name}\n"${currentEmotion}"\n\n${currentInterpretation}`;
   if (navigator.share) {
     try { await navigator.share({ title, text }); return; } catch {}
