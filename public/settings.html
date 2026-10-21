@@ -86,9 +86,9 @@ async function init() {
 
   document.getElementById('nameInput').value = member.display_name || '';
 
-  const roleLabel = member.role === 'student' ? '🎓 정규 수강생 · 무제한' : '회원 · 무제한';
+  const roleLabel = member.role === 'student' ? '🎓 정규 수강생' : '수강생 인증 필요';
   document.getElementById('roleBadge').textContent = roleLabel;
-  document.getElementById('roleBadge').className = 'badge mt-8 ' + (member.role === 'student' ? 'badge-student' : 'badge-active');
+  document.getElementById('roleBadge').className = 'badge mt-8 ' + (member.role === 'student' ? 'badge-student' : 'badge-free');
   document.getElementById('rowRole').textContent = roleLabel;
   document.getElementById('rowJoined').textContent = member.created_at ? fmtDate(member.created_at) : '-';
 

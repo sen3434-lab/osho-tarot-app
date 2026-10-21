@@ -5,6 +5,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
+const APP_KEY = 'oshozen-tarot';
 const CARD_TYPE = '오쇼젠';
 
 app.use(express.json());
@@ -135,12 +136,53 @@ async function callGemini(systemPrompt, userPrompt) {
 }
 
 // ---------------------------------------------------------------------
+// This app is students-only. Verified against the caller's OWN Supabase
+// row via RLS (their access token), so no service-role key is needed and a
+// request can never read someone else's enrollment. Hiding the UI alone
+// isn't enough — anyone could call /api/reading directly.
+// ---------------------------------------------------------------------
+async function requireStudent(req) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) {
+    const err = new Error('로그인이 필요해요.');
+    err.status = 401;
+    throw err;
+  }
+  const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+  const { data: userData, error: userErr } = await sb.auth.getUser(token);
+  if (userErr || !userData?.user) {
+    const err = new Error('로그인이 필요해요.');
+    err.status = 401;
+    throw err;
+  }
+  const { data: enrollment } = await sb
+    .from('enrollments')
+    .select('role')
+    .eq('member_id', userData.user.id)
+    .eq('app_key', APP_KEY)
+    .maybeSingle();
+  if (!enrollment || enrollment.role !== 'student') {
+    const err = new Error('수강생 인증이 필요해요.');
+    err.status = 403;
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------
 // POST /api/reading — draws a card for the given emotion and returns an
-// AI interpretation. Free, no login required. Saving to history (the
-// `readings` table) happens client-side, only if the user is logged in
-// and taps "저장" — same pattern as color-tarot-app.
+// AI interpretation. Students only. Saving to history (the `readings`
+// table) happens client-side when the user taps "저장".
 // ---------------------------------------------------------------------
 app.post('/api/reading', async (req, res) => {
+  try {
+    await requireStudent(req);
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message });
+  }
+
   const { emotion } = req.body || {};
   if (!emotion || !emotion.trim()) {
     return res.status(400).json({ error: 'emotion is required' });

@@ -43,13 +43,11 @@
     <div class="chip-grid" id="emotionChips"></div>
   </div>
 
-  <div class="limit-box" id="limitBox" style="display:none;">
-    <div class="ic">🌙</div>
-    <p><strong>비회원은 하루 1회만 무료로 이용하실 수 있어요.</strong></p>
-    <p class="muted small mt-8">회원가입하시면 계속 카드를 만나보실 수 있어요.<br/>가입은 1분이면 충분해요.</p>
-    <div style="max-width:280px;margin:20px auto 0;">
-      <a href="/auth.html" class="btn btn-primary btn-block">무료로 회원가입하기</a>
-    </div>
+  <div class="limit-box" id="gateBox" style="display:none;">
+    <div class="ic" id="gateIcon">🔒</div>
+    <p><strong id="gateTitle"></strong></p>
+    <p class="muted small mt-8" id="gateDesc"></p>
+    <div style="max-width:280px;margin:20px auto 0;display:flex;flex-direction:column;gap:10px;" id="gateActions"></div>
   </div>
 
   <div class="home-input-bar" id="inputBar">
@@ -96,50 +94,26 @@ input.addEventListener('input', () => {
   drawBtn.disabled = !input.value.trim();
 });
 
-function today() {
-  return new Date().toISOString().slice(0, 10);
+function showGate({ icon, title, desc, actions }) {
+  document.getElementById('moodView').style.display = 'none';
+  document.getElementById('inputBar').style.display = 'none';
+  document.getElementById('gateIcon').textContent = icon;
+  document.getElementById('gateTitle').textContent = title;
+  document.getElementById('gateDesc').innerHTML = desc;
+  document.getElementById('gateActions').innerHTML = actions
+    .map(a => `<a href="${a.href}" class="btn ${a.primary ? 'btn-primary' : 'btn-outline'} btn-block">${a.label}</a>`)
+    .join('');
+  document.getElementById('gateBox').style.display = 'block';
 }
 
-// Anonymous visitors: 1 free reading per day, tracked locally. Any logged-in
-// member gets unlimited readings — no daily cap once you have an account.
-let session = null;
-let member = null;
+// Students-only app: only a logged-in member with the student role on this
+// app's enrollment can draw. The server enforces the same rule on
+// /api/reading, so this is just the friendly front door.
+let isStudent = false;
 
-async function canDrawToday() {
-  if (session) return true;
-  const raw = localStorage.getItem('ot_free_draw');
-  if (!raw) return true;
-  try {
-    const { date, count } = JSON.parse(raw);
-    return date !== today() || count < 1;
-  } catch {
-    return true;
-  }
-}
-
-function recordAnonDraw() {
-  if (session) return;
-  const raw = localStorage.getItem('ot_free_draw');
-  let count = 1;
-  try {
-    const parsed = raw ? JSON.parse(raw) : null;
-    count = parsed && parsed.date === today() ? parsed.count + 1 : 1;
-  } catch {}
-  localStorage.setItem('ot_free_draw', JSON.stringify({ date: today(), count }));
-}
-
-async function draw() {
+function draw() {
   const emotion = input.value.trim();
-  if (!emotion) return;
-
-  if (!(await canDrawToday())) {
-    document.getElementById('moodView').style.display = 'none';
-    document.getElementById('inputBar').style.display = 'none';
-    document.getElementById('limitBox').style.display = 'block';
-    return;
-  }
-
-  recordAnonDraw();
+  if (!emotion || !isStudent) return;
   sessionStorage.setItem('__pending_reading', JSON.stringify({ emotion }));
   window.location.href = '/reading.html';
 }
@@ -153,22 +127,36 @@ input.addEventListener('keydown', (e) => {
 });
 
 (async () => {
-  session = await getSession();
   const roleBadge = document.getElementById('roleBadge');
+  const session = await getSession();
   if (!session) {
-    roleBadge.textContent = '비로그인 · 무료 1회/일';
-    roleBadge.className = 'badge badge-free';
+    roleBadge.textContent = '수강생 전용';
+    showGate({
+      icon: '🔒',
+      title: '수강생 전용 앱이에요',
+      desc: '로그인한 뒤 강의에서 안내받은<br/>수강생 인증 코드를 입력해주세요.',
+      actions: [
+        { href: '/auth.html', label: '로그인 / 회원가입', primary: true },
+        { href: '/verify-student.html', label: '수강생 인증 코드 입력' },
+      ],
+    });
     return;
   }
-  member = await getMember(session);
+  const member = await getMember(session);
   if (!member) { roleBadge.textContent = '오류'; return; }
-  if (member.role === 'student') {
-    roleBadge.textContent = '🎓 정규 수강생 · 무제한';
-    roleBadge.className = 'badge badge-student';
-  } else {
-    roleBadge.textContent = '회원 · 무제한';
-    roleBadge.className = 'badge badge-active';
+  if (member.role !== 'student') {
+    roleBadge.textContent = '수강생 인증 필요';
+    showGate({
+      icon: '🎓',
+      title: '수강생 인증이 필요해요',
+      desc: '강의에서 안내받은 인증 코드를 입력하시면<br/>바로 이용하실 수 있어요.',
+      actions: [{ href: '/verify-student.html', label: '수강생 인증하기', primary: true }],
+    });
+    return;
   }
+  isStudent = true;
+  roleBadge.textContent = '🎓 정규 수강생';
+  roleBadge.className = 'badge badge-student';
 })();
 </script>
 </body>

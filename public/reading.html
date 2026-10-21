@@ -157,11 +157,21 @@ async function run() {
   document.getElementById('emotionText').textContent = `"${emotion}"`;
 
   try {
+    const session = await getSession();
+    if (!session) { window.location.href = '/index.html'; return; }
     const res = await fetch('/api/reading', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + session.access_token,
+      },
       body: JSON.stringify({ emotion }),
     });
+    if (res.status === 401 || res.status === 403) {
+      showToast('수강생 인증이 필요해요.');
+      setTimeout(() => { window.location.href = '/index.html'; }, 900);
+      return;
+    }
     if (!res.ok) throw new Error('reading failed');
     const data = await res.json();
     currentCard = data.card;
