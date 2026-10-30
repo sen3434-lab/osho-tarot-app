@@ -56,7 +56,14 @@
       <div class="txt" id="emotionText"></div>
     </div>
 
-    <div id="readingLoading" class="center" style="padding: 30px 20px;">
+    <div id="openGate" class="pay-gate">
+      <div class="ic">🔮</div>
+      <h2>이 카드의 이야기를 열어볼까요?</h2>
+      <p>풀이를 열 때 코인 1개가 사용돼요.<br/>열어본 풀이는 기록에 저장돼서 언제든 다시 볼 수 있어요.</p>
+      <button class="btn btn-primary mt-16" id="openBtn">🪙 풀이 열기 (코인 1개)</button>
+    </div>
+
+    <div id="readingLoading" class="center" style="padding: 30px 20px; display:none;">
       <div class="spinner"></div>
       <p class="muted small mt-16">카드의 이야기를 읽고 있어요...</p>
     </div>
@@ -210,6 +217,7 @@ function showRetry(message) {
 }
 
 async function loadReading() {
+  document.getElementById('openGate').style.display = 'none';
   payGate.style.display = 'none';
   readingLoading.style.display = 'block';
 
@@ -268,7 +276,9 @@ async function run() {
   renderCard(currentCard);
   requestAnimationFrame(() => document.getElementById('tarotCard').classList.add('flipped'));
 
-  await loadReading();
+  // 카드는 무료로 보여주고, 풀이는 버튼을 눌렀을 때만 코인을 쓴다.
+  const openBtn = document.getElementById('openBtn');
+  openBtn.addEventListener('click', () => { openBtn.disabled = true; loadReading(); });
 }
 
 document.getElementById('shareBtn').addEventListener('click', async () => {
