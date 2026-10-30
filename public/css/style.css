@@ -413,3 +413,16 @@ button { font-family: inherit; cursor: pointer; }
 .hist-item .hi-mood { font-size: 12.5px; color: var(--foreground); margin-top: 3px; font-style: italic; }
 .hist-item .hi-actions { display: flex; align-items: flex-start; }
 .hist-item .hi-actions button { background: none; border: none; color: var(--muted-foreground); font-size: 15px; padding: 4px; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-student { background: var(--accent); color: var(--accent-foreground); }
+.badge-free { background: var(--muted); color: var(--muted-foreground); }
+.badge-active { background: rgba(193,113,72,.12); color: var(--primary-dark); }

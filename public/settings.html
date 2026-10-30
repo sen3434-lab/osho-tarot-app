@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>OZ 무의식타로 · 설정</title>
+<title>OZ 내면 명상 타로 · 설정</title>
 <link rel="stylesheet" href="/css/style.css"/>
 <link rel="manifest" href="/manifest.json"/>
-<meta name="theme-color" content="#c17148"/>
+<meta name="theme-color" content="#bc6338"/>
 <link rel="icon" href="/icons/icon-192.png"/>
 <link rel="apple-touch-icon" href="/icons/icon-192.png"/>
 <style>
@@ -21,7 +21,8 @@
 <body>
 
 <div class="topbar">
-  <a href="/index.html" class="brand">OZ <span>✦</span> 무의식타로</a>
+  <a href="/index.html" class="brand">OZ <span>✦</span> 내면 명상 타로</a>
+  <div class="topbar-actions"></div>
 </div>
 
 <div class="container">
@@ -48,6 +49,7 @@
         </span>
       </div>
       <div class="row"><span class="rl">등급</span><span id="rowRole"></span></div>
+      <div class="row"><span class="rl">보유 코인</span><span><a href="/coins.html" id="rowCoins" style="color:var(--primary-dark);font-weight:600;">-</a></span></div>
       <div class="row"><span class="rl">가입일</span><span id="rowJoined"></span></div>
     </div>
 
@@ -58,15 +60,24 @@
           <span class="rl">정규 수강생 인증</span>
           <a href="/verify-student.html" class="btn btn-outline btn-sm">인증하기</a>
         </div>
+        <div class="row">
+          <span class="rl">코인 충전 · 내역</span>
+          <a href="/coins.html" class="btn btn-outline btn-sm">보기</a>
+        </div>
+        <div class="row" id="rowAdmin" style="display:none;">
+          <span class="rl">운영자 도구</span>
+          <a href="/admin.html" class="btn btn-outline btn-sm">코인 지급</a>
+        </div>
       </div>
     </div>
 
     <button class="btn btn-outline btn-block" id="logoutBtn">로그아웃</button>
+    <button class="btn btn-danger btn-block mt-16" id="deleteBtn">회원 탈퇴 문의</button>
   </div>
 </div>
 
 <script type="module">
-import { getSb, getSession, getMember, signOut, renderBottomNav, fmtDate, showToast } from '/js/app.js';
+import { getSb, getSession, getMember, getBalance, signOut, renderBottomNav, fmtDate, showToast } from '/js/app.js';
 renderBottomNav('/settings.html');
 
 let currentSession = null;
@@ -86,13 +97,21 @@ async function init() {
 
   document.getElementById('nameInput').value = member.display_name || '';
 
-  const roleLabel = member.role === 'student' ? '🎓 정규 수강생' : '수강생 인증 필요';
+  const roleLabel = member.role === 'student' ? '🎓 정규 수강생' : '일반 회원';
   document.getElementById('roleBadge').textContent = roleLabel;
   document.getElementById('roleBadge').className = 'badge mt-8 ' + (member.role === 'student' ? 'badge-student' : 'badge-free');
   document.getElementById('rowRole').textContent = roleLabel;
+
+  document.getElementById('rowCoins').textContent = '🪙 ' + (await getBalance()) + '코인';
+  const { data: isAdmin } = await (await getSb()).rpc('am_i_admin');
+  if (isAdmin === true) document.getElementById('rowAdmin').style.display = 'flex';
   document.getElementById('rowJoined').textContent = member.created_at ? fmtDate(member.created_at) : '-';
 
-  document.getElementById('rowVerify').style.display = member.role === 'student' ? 'none' : 'flex';
+  const isStudent = member.role === 'student';
+  document.getElementById('rowVerify').style.display = isStudent ? 'none' : 'flex';
+  if (isStudent) {
+    document.getElementById('generalSection').style.display = 'none';
+  }
 }
 init();
 
@@ -109,6 +128,9 @@ document.getElementById('saveNameBtn').addEventListener('click', async () => {
 });
 
 document.getElementById('logoutBtn').addEventListener('click', signOut);
+document.getElementById('deleteBtn').addEventListener('click', () => {
+  alert('회원 탈퇴는 010-2426-9731(문자) 또는 ozmaj@naver.com 으로 문의해주세요.');
+});
 </script>
 </body>
 </html>

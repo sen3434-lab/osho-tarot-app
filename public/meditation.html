@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<title>OZ 내면 명상 타로 · 명상</title>
+<link rel="stylesheet" href="/css/style.css"/>
+<link rel="manifest" href="/manifest.json"/>
+<meta name="theme-color" content="#c17148"/>
+<link rel="icon" href="/icons/icon-192.png"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png"/>
+<style>
+  .hero { text-align: center; padding: 10px 0 6px; }
+  .hero-eyebrow { font-size: 10.5px; letter-spacing: 5px; color: var(--primary); font-weight: 600; text-transform: uppercase; }
+  .hero h1 { font-size: 20px; line-height: 1.5; margin-top: 8px; }
+  .hero p { font-size: 13px; color: var(--muted-foreground); margin-top: 8px; line-height: 1.7; }
+
+  .player { margin-top: 22px; display: none; }
+  .player .frame { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 14px; overflow: hidden; }
+  .player iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .player .p-title { font-size: 15px; font-weight: 600; margin-top: 12px; }
+  .player .p-desc { font-size: 12.5px; color: var(--muted-foreground); margin-top: 4px; line-height: 1.7; }
+  .player .p-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+  .v-list { margin-top: 22px; display: flex; flex-direction: column; gap: 12px; }
+  .v-item { display: flex; gap: 12px; padding: 10px; border: 0.8px solid var(--border); border-radius: 14px; background: var(--card); cursor: pointer; text-align: left; width: 100%; font: inherit; color: inherit; }
+  .v-item.active { border-color: rgba(193,113,72,.5); background: rgba(193,113,72,.06); }
+  .v-thumb { position: relative; flex-shrink: 0; width: 132px; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: var(--muted); }
+  .v-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .v-thumb .play { position: absolute; right: 6px; bottom: 6px; background: rgba(0,0,0,.65); color: #fff; font-size: 10.5px; border-radius: 999px; padding: 2px 7px; }
+  .v-body { min-width: 0; flex: 1; }
+  .v-body .t { font-size: 13.5px; font-weight: 600; line-height: 1.45; }
+  .v-body .d { font-size: 11.5px; color: var(--muted-foreground); margin-top: 4px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .v-body .m { font-size: 11px; color: var(--primary-dark); margin-top: 6px; }
+
+  .channel-box { margin-top: 26px; padding: 18px; background: var(--secondary); border-radius: 16px; text-align: center; }
+  .channel-box p { font-size: 13px; line-height: 1.7; }
+  .free-note { font-size: 11.5px; color: var(--muted-foreground); text-align: center; margin-top: 18px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/index.html" class="brand">OZ <span>✦</span> 내면 명상 타로</a>
+  <div class="topbar-actions">
+    <a href="/coins.html" class="icon-btn" id="coinBadge" style="font-weight:600;color:var(--primary-dark);">🪙</a>
+    <a href="/settings.html" class="icon-btn">계정</a>
+  </div>
+</div>
+
+<div class="container">
+  <div class="hero">
+    <div class="hero-eyebrow">Meditation</div>
+    <h1>카드가 건넨 이야기를<br/>명상으로 이어가 보세요</h1>
+    <p>잠시 눈을 감고 호흡을 고르는 시간.<br/>영상은 누구나 무료로 볼 수 있어요.</p>
+  </div>
+
+  <div class="player" id="player">
+    <div class="frame" id="frame"></div>
+    <div class="p-title" id="pTitle"></div>
+    <div class="p-desc" id="pDesc"></div>
+    <div class="p-actions">
+      <a class="btn btn-outline btn-sm" id="pOpen" target="_blank" rel="noopener noreferrer">유튜브에서 보기</a>
+    </div>
+  </div>
+
+  <div class="v-list" id="list"></div>
+
+  <div id="empty" class="empty-state" style="display:none;">
+    <div class="ic">🧘</div>
+    <p>명상 영상을 준비하고 있어요.<br/>곧 만나요.</p>
+  </div>
+
+  <div class="channel-box" id="channelBox" style="display:none;">
+    <p id="channelText"></p>
+    <a class="btn btn-primary mt-16" id="channelLink" target="_blank" rel="noopener noreferrer">채널 구경하기</a>
+  </div>
+
+  <p class="free-note">명상 영상은 코인 없이 볼 수 있어요.</p>
+</div>
+
+<script type="module">
+import { getSession, claimFreeCoins, renderCoinBadge, renderBottomNav } from '/js/app.js';
+
+renderBottomNav('/meditation.html');
+
+(async () => {
+  const session = await getSession();
+  if (session) await claimFreeCoins(session);
+  await renderCoinBadge(document.getElementById('coinBadge'));
+})();
+
+// 유튜브 주소(여러 모양)에서 영상 ID(11자)를 뽑는다. 모르는 모양이면 null.
+function youtubeId(input) {
+  const s = String(input || '').trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
+  try {
+    const u = new URL(s);
+    const host = u.hostname.replace(/^www\./, '').replace(/^m\./, '');
+    if (host === 'youtu.be') return u.pathname.slice(1).split('/')[0].slice(0, 11) || null;
+    if (host === 'youtube.com' || host === 'music.youtube.com') {
+      if (u.pathname === '/watch') return u.searchParams.get('v');
+      const m = u.pathname.match(/^\/(?:embed|shorts|live|v)\/([A-Za-z0-9_-]{11})/);
+      if (m) return m[1];
+    }
+  } catch {}
+  return null;
+}
+const isId = (v) => /^[A-Za-z0-9_-]{11}$/.test(v || '');
+const isHttps = (v) => { try { return new URL(v).protocol === 'https:'; } catch { return false; } };
+
+const listEl = document.getElementById('list');
+const playerEl = document.getElementById('player');
+
+function play(v) {
+  const frame = document.getElementById('frame');
+  frame.textContent = '';
+  const iframe = document.createElement('iframe');
+  // 유튜브 공식 "개인정보 보호 모드" 주소: 재생 전에는 시청 기록 쿠키를 심지 않는다.
+  iframe.src = `https://www.youtube-nocookie.com/embed/${v.id}?rel=0&modestbranding=1&playsinline=1`;
+  iframe.title = v.title;
+  iframe.allow = 'accelerometer; autoplay; encrypted-media; picture-in-picture; fullscreen';
+  iframe.allowFullscreen = true;
+  iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+  frame.appendChild(iframe);
+  document.getElementById('pTitle').textContent = v.title;
+  document.getElementById('pDesc').textContent = v.description || '';
+  document.getElementById('pOpen').href = `https://www.youtube.com/watch?v=${v.id}`;
+  playerEl.style.display = 'block';
+  listEl.querySelectorAll('.v-item').forEach((b) => b.classList.toggle('active', b.dataset.id === v.id));
+  playerEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function init() {
+  let data = { channel: {}, videos: [] };
+  try {
+    const r = await fetch('/meditations.json', { cache: 'no-cache' });
+    if (r.ok) data = await r.json();
+  } catch (e) {
+    console.error('meditations.json failed', e);
+  }
+
+  const videos = (data.videos || [])
+    .map((v) => ({ id: youtubeId(v.url || v.id), title: String(v.title || '').slice(0, 80), description: String(v.description || '').slice(0, 200), length: String(v.length || '').slice(0, 12) }))
+    .filter((v) => isId(v.id) && v.title);
+
+  if (!videos.length) {
+    document.getElementById('empty').style.display = 'block';
+  }
+  videos.forEach((v) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'v-item';
+    b.dataset.id = v.id;
+    const thumb = document.createElement('div');
+    thumb.className = 'v-thumb';
+    const img = document.createElement('img');
+    img.alt = '';
+    img.loading = 'lazy';
+    img.src = `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`;
+    thumb.appendChild(img);
+    const badge = document.createElement('span');
+    badge.className = 'play';
+    badge.textContent = v.length ? `▶ ${v.length}` : '▶ 재생';
+    thumb.appendChild(badge);
+    const body = document.createElement('div');
+    body.className = 'v-body';
+    const t = document.createElement('div'); t.className = 't'; t.textContent = v.title;
+    body.appendChild(t);
+    if (v.description) { const d = document.createElement('div'); d.className = 'd'; d.textContent = v.description; body.appendChild(d); }
+    b.append(thumb, body);
+    b.addEventListener('click', () => play(v));
+    listEl.appendChild(b);
+  });
+
+  const ch = data.channel || {};
+  if (isHttps(ch.url)) {
+    document.getElementById('channelText').textContent = ch.name ? `${ch.name} 채널에서 더 많은 명상을 만나보세요.` : '유튜브 채널에서 더 많은 명상을 만나보세요.';
+    document.getElementById('channelLink').href = ch.url;
+    document.getElementById('channelBox').style.display = 'block';
+  }
+}
+init();
+</script>
+</body>
+</html>

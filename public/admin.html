@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="robots" content="noindex"/>
+<title>OZ 내면 명상 타로 · 운영자 도구</title>
+<link rel="stylesheet" href="/css/style.css"/>
+<link rel="manifest" href="/manifest.json"/>
+<meta name="theme-color" content="#bc6338"/>
+<link rel="icon" href="/icons/icon-192.png"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png"/>
+<style>
+  .admin-card { background: var(--card); border: 0.8px solid var(--border); border-radius: 16px; padding: 18px; }
+  .admin-card textarea { width: 100%; min-height: 130px; padding: 12px 14px; border: 0.8px solid var(--border); border-radius: 8px; font-size: 13.5px; font-family: inherit; line-height: 1.7; resize: vertical; background: var(--card); color: var(--foreground); }
+  .admin-card textarea:focus { outline: none; border-color: rgba(188,99,56,.5); box-shadow: 0 0 0 3px rgba(188,99,56,.1); }
+  .two-col { display: grid; grid-template-columns: 110px 1fr; gap: 10px; }
+  .result-group { margin-top: 12px; font-size: 13px; line-height: 1.7; }
+  .result-group b { display: inline-block; margin-bottom: 2px; }
+  .result-group .list { color: var(--muted-foreground); word-break: break-all; }
+  .tag-ok { color: var(--accent-foreground); }
+  .tag-wait { color: var(--primary-dark); }
+  .tag-bad { color: var(--danger); }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 0; border-bottom: 0.8px solid var(--border); font-size: 13px; }
+  .row .rd { font-size: 11px; color: var(--muted-foreground); margin-top: 2px; }
+  .row .rl { min-width: 0; word-break: break-all; }
+  .linkbtn { background: none; border: none; color: var(--danger); font-size: 12px; text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/index.html" class="brand">OZ <span>✦</span> 내면 명상 타로</a>
+  <div class="topbar-actions"><span class="badge badge-active">운영자</span></div>
+</div>
+
+<div class="container">
+  <div id="loadingView" class="center" style="padding:60px 0;"><div class="spinner"></div></div>
+
+  <div id="deniedView" style="display:none;" class="empty-state">
+    <div class="ic">🔒</div>
+    <p id="deniedMsg">이 화면은 운영자만 쓸 수 있어요.</p>
+    <a href="/index.html" class="btn btn-outline mt-16">홈으로</a>
+  </div>
+
+  <div id="adminView" style="display:none;">
+    <div class="section-label">수강생 코인 지급</div>
+    <div class="admin-card">
+      <p class="small muted mb-8">수강생 이메일을 줄바꿈이나 쉼표로 구분해 붙여넣으세요. 이미 가입한 분은 바로 지급되고, 아직 가입하지 않은 분은 <b>그 이메일로 가입해 로그인하는 순간 자동 지급</b>돼요. 모든 OZ 타로 앱에서 쓰는 공용 코인이에요.</p>
+      <textarea id="emails" placeholder="student1@gmail.com&#10;student2@naver.com, student3@daum.net"></textarea>
+      <div class="two-col mt-16">
+        <div class="field" style="margin:0;"><label>1인당 코인</label><input type="number" id="coins" value="100" min="1" max="5000"/></div>
+        <div class="field" style="margin:0;"><label>코인 내역에 보일 설명</label><input type="text" id="memo" value="수강생 코인 지급" maxlength="100"/></div>
+      </div>
+      <button class="btn btn-primary btn-block mt-16" id="grantBtn">코인 지급하기</button>
+      <div id="resultBox" style="display:none;"></div>
+    </div>
+
+    <div class="section-label mt-32">가입 대기 중 (가입하면 자동 지급)</div>
+    <div id="pendingList"></div>
+    <div id="pendingEmpty" class="empty-state" style="display:none;padding:24px 20px;"><p>대기 중인 지급이 없어요.</p></div>
+
+    <div class="section-label mt-32">최근 지급 내역</div>
+    <div id="grantedList"></div>
+    <div id="grantedEmpty" class="empty-state" style="display:none;padding:24px 20px;"><p>아직 내역이 없어요.</p></div>
+  </div>
+</div>
+
+<script type="module">
+import { getSb, getSession, getMember, renderBottomNav, fmtDate, showToast } from '/js/app.js';
+renderBottomNav('/settings.html');
+
+const $ = (id) => document.getElementById(id);
+let batchId = crypto.randomUUID();   // reused on retry so a double click can never pay twice
+
+function parseEmails(text) {
+  return [...new Set(text.split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean))];
+}
+
+function group(title, cls, items) {
+  if (!items || !items.length) return '';
+  const wrap = document.createElement('div');
+  wrap.className = 'result-group';
+  const b = document.createElement('b');
+  b.className = cls;
+  b.textContent = `${title} (${items.length})`;
+  const list = document.createElement('div');
+  list.className = 'list';
+  list.textContent = items.join(', ');
+  wrap.append(b, list);
+  return wrap;
+}
+
+function showResult(r) {
+  const box = $('resultBox');
+  box.innerHTML = '';
+  box.style.display = 'block';
+  const head = document.createElement('div');
+  head.className = 'mt-16';
+  head.style.fontWeight = '600';
+  head.textContent = `각 ${r.coins}코인 처리 결과`;
+  box.append(head);
+  [
+    group('✅ 바로 지급됨', 'tag-ok', r.granted),
+    group('⏳ 가입 대기 (가입하면 자동 지급)', 'tag-wait', r.pending),
+    group('↩️ 이미 처리된 이메일(중복 방지)', '', r.already),
+    group('⚠️ 이메일 형식 오류', 'tag-bad', r.invalid),
+  ].forEach((g) => g && box.append(g));
+}
+
+function dt(iso) {
+  const d = new Date(iso);
+  return `${fmtDate(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+async function loadRecent() {
+  const sb = await getSb();
+  const { data } = await sb.rpc('admin_recent');
+  if (!data?.ok) return;
+
+  const pendingEl = $('pendingList');
+  pendingEl.innerHTML = '';
+  $('pendingEmpty').style.display = data.pending.length ? 'none' : 'block';
+  data.pending.forEach((p) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const left = document.createElement('div');
+    left.className = 'rl';
+    left.innerHTML = '<div class="e"></div><div class="rd"></div>';
+    left.querySelector('.e').textContent = p.email;
+    left.querySelector('.rd').textContent = `${p.coins}코인 · ${p.memo || ''} · ${dt(p.created_at)}`;
+    const btn = document.createElement('button');
+    btn.className = 'linkbtn';
+    btn.textContent = '취소';
+    btn.addEventListener('click', async () => {
+      if (!confirm(`${p.email} 님의 대기 중인 ${p.coins}코인 지급을 취소할까요?`)) return;
+      const { data: res } = await sb.rpc('admin_cancel_pending', { p_id: p.id });
+      showToast(res?.ok ? '취소했어요.' : '이미 지급되었거나 취소할 수 없어요.');
+      loadRecent();
+    });
+    row.append(left, btn);
+    pendingEl.append(row);
+  });
+
+  const grantedEl = $('grantedList');
+  grantedEl.innerHTML = '';
+  $('grantedEmpty').style.display = data.granted.length ? 'none' : 'block';
+  data.granted.forEach((g) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const left = document.createElement('div');
+    left.className = 'rl';
+    left.innerHTML = '<div class="e"></div><div class="rd"></div>';
+    left.querySelector('.e').textContent = g.email;
+    left.querySelector('.rd').textContent = `${g.memo || ''} · ${dt(g.created_at)}`;
+    const amount = document.createElement('div');
+    amount.style.fontWeight = '600';
+    amount.textContent = `+${g.coins}`;
+    row.append(left, amount);
+    grantedEl.append(row);
+  });
+}
+
+async function init() {
+  const session = await getSession();
+  $('loadingView').style.display = 'none';
+  if (!session) {
+    $('deniedMsg').textContent = '운영자 계정으로 로그인해주세요.';
+    $('deniedView').style.display = 'block';
+    return;
+  }
+  await getMember(session);
+  const sb = await getSb();
+  const { data: isAdmin } = await sb.rpc('am_i_admin');
+  if (isAdmin !== true) {
+    $('deniedView').style.display = 'block';
+    return;
+  }
+  $('adminView').style.display = 'block';
+  loadRecent();
+}
+
+// a changed list or amount is a NEW submission; an untouched retry keeps the same batch id
+['emails', 'coins'].forEach((id) => $(id).addEventListener('input', () => { batchId = crypto.randomUUID(); }));
+
+$('grantBtn').addEventListener('click', async () => {
+  const emails = parseEmails($('emails').value);
+  const coins = Number($('coins').value);
+  if (!emails.length) { showToast('이메일을 입력해주세요.'); return; }
+  if (!Number.isInteger(coins) || coins < 1 || coins > 5000) { showToast('코인은 1~5000 사이로 입력해주세요.'); return; }
+  if (emails.length > 200) { showToast('한 번에 최대 200명까지예요.'); return; }
+  if (!confirm(`${emails.length}명에게 각 ${coins}코인을 지급할까요?`)) return;
+
+  const btn = $('grantBtn');
+  btn.disabled = true;
+  btn.textContent = '지급 중...';
+  const sb = await getSb();
+  const { data, error } = await sb.rpc('admin_grant_coins', {
+    p_emails: emails.join('\n'), p_coins: coins, p_memo: $('memo').value, p_batch: batchId,
+  });
+  btn.disabled = false;
+  btn.textContent = '코인 지급하기';
+
+  if (error || !data) { console.error(error); showToast('지급에 실패했어요. 같은 내용으로 다시 눌러도 중복 지급되지 않아요.'); return; }
+  if (!data.ok) {
+    const msg = { not_admin: '운영자 권한이 없어요.', bad_coins: '코인은 1~5000 사이로 입력해주세요.', no_emails: '이메일을 입력해주세요.', too_many: '한 번에 최대 200명까지예요.' }[data.reason] || '지급할 수 없어요.';
+    showToast(msg);
+    return;
+  }
+  showResult(data);
+  batchId = crypto.randomUUID();
+  loadRecent();
+});
+
+init();
+</script>
+</body>
+</html>

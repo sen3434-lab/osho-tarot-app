@@ -3,3 +3,7 @@ node_modules/
 server.log
 twa/
 android/
+
+# Play billing credentials — never commit
+*service-account*.json
+secrets/

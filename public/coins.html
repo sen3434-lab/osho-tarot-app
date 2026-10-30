@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>OZ 내면 명상 타로 · 코인</title>
+<link rel="stylesheet" href="/css/style.css"/>
+<link rel="manifest" href="/manifest.json"/>
+<meta name="theme-color" content="#bc6338"/>
+<link rel="icon" href="/icons/icon-192.png"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png"/>
+<style>
+  .balance-card { text-align: center; padding: 26px 20px; background: linear-gradient(135deg, rgba(188,99,56,.10), rgba(220,234,228,.5)); border-radius: 18px; }
+  .balance-card .n { font-size: 40px; font-weight: 600; color: var(--primary-dark); line-height: 1.1; }
+  .balance-card .l { font-size: 12.5px; color: var(--muted-foreground); margin-top: 6px; }
+  .balance-card .earn { font-size: 12px; color: var(--muted-foreground); margin-top: 14px; line-height: 1.7; }
+
+  .product { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border: 0.8px solid var(--border); border-radius: 14px; background: var(--card); margin-bottom: 10px; }
+  .product .pc { font-size: 15px; font-weight: 600; }
+  .product .pp { font-size: 12px; color: var(--muted-foreground); margin-top: 2px; }
+  .product .tag { font-size: 10.5px; color: var(--accent-foreground); background: var(--accent); padding: 2px 8px; border-radius: 999px; margin-left: 6px; font-weight: 600; }
+  .pay-note { font-size: 12px; color: var(--muted-foreground); text-align: center; margin-top: 10px; line-height: 1.7; }
+
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0; border-bottom: 0.8px solid var(--border); }
+  .row .rl { min-width: 0; }
+  .row .rt { font-size: 13.5px; }
+  .row .rd { font-size: 11px; color: var(--muted-foreground); margin-top: 2px; }
+  .row .ra { text-align: right; flex-shrink: 0; }
+  .row .delta { font-size: 14px; font-weight: 600; }
+  .row .delta.plus { color: var(--accent-foreground); }
+  .row .delta.minus { color: var(--foreground); }
+  .row .bal { font-size: 11px; color: var(--muted-foreground); margin-top: 2px; }
+  .status-refunded { color: var(--danger); font-size: 11px; }
+
+  .family-intro { font-size: 13px; line-height: 1.7; color: var(--foreground); margin-bottom: 14px; }
+  .oz-app { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border: 0.8px solid var(--border); border-radius: 14px; background: var(--card); margin-bottom: 10px; }
+  .oz-app.current { background: rgba(188,99,56,.06); border-color: rgba(188,99,56,.3); }
+  .oz-app .an { font-size: 14px; font-weight: 600; }
+  .oz-app .ad { font-size: 11.5px; color: var(--muted-foreground); margin-top: 2px; line-height: 1.5; }
+  .oz-app .acts { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; align-items: stretch; }
+  .oz-app .acts .btn { white-space: nowrap; }
+  .oz-app .soon { font-size: 11.5px; color: var(--muted-foreground); text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/index.html" class="brand">OZ <span>✦</span> 내면 명상 타로</a>
+  <div class="topbar-actions"><a href="/settings.html" class="icon-btn">계정</a></div>
+</div>
+
+<div class="container">
+  <div id="gate" style="display:none;" class="empty-state">
+    <div class="ic">🔒</div>
+    <p>코인은 로그인 후 확인하실 수 있어요.<br/>가입하면 5코인을 바로 드려요.</p>
+    <a href="/auth.html" class="btn btn-primary mt-16">로그인 / 가입하기</a>
+  </div>
+
+  <div id="content" style="display:none;">
+    <div class="balance-card">
+      <div class="n">🪙 <span id="balance">0</span></div>
+      <div class="l">보유 코인 · OZ 타로 모든 앱에서 함께 써요</div>
+      <div class="earn">매일 앱에 들어오면 <b>출석 보너스 1코인</b><br/>수강생 코드를 입력하면 <b>100코인</b>
+        (<a href="/verify-student.html" style="color:var(--primary-dark);font-weight:600;">코드 입력</a>)</div>
+    </div>
+
+    <div class="section-label mt-32">하나의 코인으로 모든 OZ 타로</div>
+    <p class="family-intro">여기서 충전하거나 받은 코인은 <b>OZ 타로 모든 앱에서 함께</b> 써요.<br/>같은 계정으로 로그인하면 코인이 그대로 이어져요.</p>
+    <div id="ozApps"></div>
+
+    <div class="section-label mt-32">코인 충전</div>
+    <div id="products"></div>
+    <p class="pay-note" id="payNote">결제 기능을 준비 중이에요. 곧 만나보실 수 있어요.</p>
+
+    <div class="section-label mt-32">코인 사용 내역</div>
+    <div id="ledger"></div>
+    <div id="ledgerEmpty" class="empty-state" style="display:none;padding:30px 20px;"><p>아직 내역이 없어요.</p></div>
+
+    <div id="paymentsWrap" style="display:none;">
+      <div class="section-label mt-32">결제 내역</div>
+      <div id="payments"></div>
+    </div>
+    <p class="small muted center mt-24">최근 50건까지 보여드려요.</p>
+  </div>
+</div>
+
+<script type="module">
+import { getSb, getSession, getMember, claimFreeCoins, getBalance, renderBottomNav, fmtDate, APP_KEY } from '/js/app.js';
+import { OZ_APPS, playUrl, shortName } from '/js/ozApps.js';
+import { billingState, buyPack, restorePurchases } from '/js/billing.js';
+
+renderBottomNav('/coins.html');
+
+const KIND_LABEL = {
+  signup_bonus: '가입 보너스',
+  daily_attendance: '출석 보너스',
+  class_code: '수강생 코드',
+  purchase: '코인 충전',
+  spend: '사용',
+  refund: '환불로 회수',
+  adjust: '관리자 조정',
+  admin_grant: '운영자 지급',
+};
+const won = (n) => '₩' + Number(n).toLocaleString('ko-KR');
+
+function ledgerTitle(r) {
+  const base = KIND_LABEL[r.kind] || r.kind;
+  if (r.kind === 'spend') {
+    const app = shortName(r.app_key);
+    return `${app ? app + ' · ' : ''}${r.memo || '사용'}`;
+  }
+  return r.memo || base;
+}
+
+function fmtDateTime(iso) {
+  const d = new Date(iso);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${fmtDate(d)} ${hh}:${mm}`;
+}
+
+function renderFamily() {
+  const el = document.getElementById('ozApps');
+  el.innerHTML = '';
+  OZ_APPS.forEach((a) => {
+    const current = a.key === APP_KEY;
+    const row = document.createElement('div');
+    row.className = 'oz-app' + (current ? ' current' : '');
+    const info = document.createElement('div');
+    info.innerHTML = '<div class="an"></div><div class="ad"></div>';
+    info.querySelector('.an').textContent = a.name + (current ? ' · 지금 사용 중' : '');
+    info.querySelector('.ad').textContent = a.desc;
+    const acts = document.createElement('div');
+    acts.className = 'acts';
+    if (!current) {
+      if (a.packageId) {
+        acts.innerHTML = `<a class="btn btn-primary btn-sm" href="${playUrl(a.packageId)}">다운받기</a>`;
+      } else {
+        acts.innerHTML = '<div class="soon">곧 만나요</div>';
+      }
+    }
+    row.append(info, acts);
+    el.appendChild(row);
+  });
+}
+renderFamily();
+
+const PAY_NOTE = {
+  not_in_app: '코인 충전은 <b>구글 플레이에서 설치한 앱</b>에서 할 수 있어요.',
+  server_off: '결제 기능을 준비 중이에요. 곧 만나보실 수 있어요.',
+  ok: '결제는 구글 플레이로 안전하게 진행돼요. 충전한 코인은 모든 OZ 타로 앱에서 함께 써요.',
+};
+const ERR_TEXT = {
+  not_in_app: '구글 플레이에서 설치한 앱에서만 결제할 수 있어요.',
+  purchase_pending: '결제가 아직 확정되지 않았어요. 완료되면 코인이 자동으로 들어와요.',
+  network_pending: '결제는 됐는데 연결이 불안정해요. 잠시 뒤 이 화면을 다시 열면 코인이 들어와요.',
+  login_required: '로그인이 풀렸어요. 다시 로그인해 주세요.',
+};
+
+async function setupPurchasing(products, accessToken) {
+  const noteEl = document.getElementById('payNote');
+  const state = await billingState();
+  noteEl.innerHTML = PAY_NOTE[state];
+  if (state === 'not_in_app') {
+    const self = OZ_APPS.find((a) => a.key === APP_KEY);
+    if (self && self.packageId) noteEl.innerHTML += '<br/><a href="' + playUrl(self.packageId) + '" style="color:var(--primary-dark);font-weight:600;">구글 플레이에서 열기</a>';
+  }
+  if (state !== 'ok') return;
+
+  const prices = Object.fromEntries(products.map((p) => [p.product_id, p.price_krw]));
+  const buttons = [...document.querySelectorAll('#products button[data-id]')];
+  buttons.forEach((b) => { b.disabled = false; });
+
+  async function afterCredit(balance, message) {
+    if (balance != null) document.getElementById('balance').textContent = balance;
+    noteEl.textContent = message;
+    setTimeout(() => location.reload(), 1500);
+  }
+
+  buttons.forEach((b) => b.addEventListener('click', async () => {
+    buttons.forEach((x) => { x.disabled = true; });
+    noteEl.textContent = '결제 창을 여는 중이에요…';
+    const r = await buyPack(accessToken, b.dataset.id, prices[b.dataset.id]);
+    if (r.ok) return afterCredit(r.balance, '충전됐어요! 🪙 ' + r.coins + '코인이 들어왔어요.');
+    buttons.forEach((x) => { x.disabled = false; });
+    if (r.cancelled) { noteEl.innerHTML = PAY_NOTE.ok; return; }
+    noteEl.textContent = ERR_TEXT[r.error] || '결제를 마무리하지 못했어요. 코인이 들어오지 않았다면 잠시 뒤 이 화면을 다시 열어 주세요.';
+  }));
+
+  // paid-but-never-credited purchases (app closed mid-purchase) are credited here
+  const back = await restorePurchases(accessToken);
+  if (back.restored > 0) afterCredit(back.balance, '이전에 결제하신 코인 ' + back.restored + '건을 찾아 넣어드렸어요.');
+}
+
+async function init() {
+  const session = await getSession();
+  if (!session) { document.getElementById('gate').style.display = 'block'; return; }
+  await getMember(session);
+  await claimFreeCoins(session);
+  document.getElementById('content').style.display = 'block';
+
+  const sb = await getSb();
+  const [bal, products, ledger, payments] = await Promise.all([
+    getBalance(),
+    sb.from('coin_products').select('product_id, coins, price_krw').order('sort'),
+    sb.from('coin_ledger').select('id, delta, balance_after, kind, app_key, memo, created_at').order('created_at', { ascending: false }).limit(50),
+    sb.from('payments').select('id, coins, amount_krw, status, created_at').order('created_at', { ascending: false }).limit(20),
+  ]);
+
+  document.getElementById('balance').textContent = bal;
+  const accessToken = session.access_token;
+
+  const productsEl = document.getElementById('products');
+  productsEl.innerHTML = '';
+  const baseUnit = (products.data || []).length ? Math.min(...products.data.map((p) => p.price_krw / p.coins)) : 0;
+  (products.data || []).forEach((p) => {
+    const unit = Math.round(p.price_krw / p.coins);
+    const best = Math.round(p.price_krw / p.coins) === Math.round(baseUnit) && products.data.length > 1;
+    const el = document.createElement('div');
+    el.className = 'product';
+    el.innerHTML = `
+      <div>
+        <div class="pc">🪙 ${p.coins}코인${best ? '<span class="tag">가장 저렴</span>' : ''}</div>
+        <div class="pp">코인당 약 ${unit}원</div>
+      </div>
+      <button class="btn btn-primary btn-sm" data-id="${p.product_id}" disabled>${won(p.price_krw)}</button>`;
+    productsEl.appendChild(el);
+  });
+
+  await setupPurchasing(products.data || [], accessToken);
+
+  const ledgerEl = document.getElementById('ledger');
+  ledgerEl.innerHTML = '';
+  const rows = ledger.data || [];
+  document.getElementById('ledgerEmpty').style.display = rows.length ? 'none' : 'block';
+  rows.forEach((r) => {
+    const plus = r.delta > 0;
+    const el = document.createElement('div');
+    el.className = 'row';
+    el.innerHTML = `
+      <div class="rl"><div class="rt"></div><div class="rd">${fmtDateTime(r.created_at)}</div></div>
+      <div class="ra"><div class="delta ${plus ? 'plus' : 'minus'}">${plus ? '+' : ''}${r.delta}</div><div class="bal">잔액 ${r.balance_after}</div></div>`;
+    el.querySelector('.rt').textContent = ledgerTitle(r);
+    ledgerEl.appendChild(el);
+  });
+
+  const pays = payments.data || [];
+  if (pays.length) {
+    document.getElementById('paymentsWrap').style.display = 'block';
+    const payEl = document.getElementById('payments');
+    pays.forEach((p) => {
+      const el = document.createElement('div');
+      el.className = 'row';
+      el.innerHTML = `
+        <div class="rl"><div class="rt">코인 ${p.coins}개 충전</div><div class="rd">${fmtDateTime(p.created_at)}</div></div>
+        <div class="ra"><div class="delta minus">${p.amount_krw == null ? '' : won(p.amount_krw)}</div>${p.status === 'refunded' ? '<div class="status-refunded">환불됨</div>' : ''}</div>`;
+      payEl.appendChild(el);
+    });
+  }
+}
+init();
+</script>
+</body>
+</html>

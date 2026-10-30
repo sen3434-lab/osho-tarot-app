@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>OZ 무의식타로 · 기록</title>
+<title>OZ 내면 명상 타로 · 기록</title>
 <link rel="stylesheet" href="/css/style.css"/>
 <link rel="manifest" href="/manifest.json"/>
 <meta name="theme-color" content="#c17148"/>
@@ -25,12 +25,22 @@
   .cal-cell.has-reading { background: rgba(193,113,72,.08); border-color: rgba(193,113,72,.35); }
   .cal-cell .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); margin-top: 6px; }
   .hi-reading { line-height: 1.6; }
+  details.hist-detail { margin-top: 10px; }
+  details.hist-detail summary { cursor: pointer; font-size: 12.5px; color: var(--primary-dark); font-weight: 600; list-style: none; }
+  details.hist-detail summary::-webkit-details-marker { display: none; }
+  .hist-reading-full { margin-top: 10px; padding: 14px; background: var(--card); border: 0.8px solid var(--border); border-radius: 12px; }
+  .hist-reading-full p { font-size: 13.5px; line-height: 1.85; white-space: pre-wrap; }
+  .note { font-size: 11.5px; color: var(--muted-foreground); text-align: center; margin-top: 18px; line-height: 1.7; }
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <a href="/index.html" class="brand">OZ <span>✦</span> 무의식타로</a>
+  <a href="/index.html" class="brand">OZ <span>✦</span> 내면 명상 타로</a>
+  <div class="topbar-actions">
+    <a href="/coins.html" class="icon-btn" id="coinBadge" style="font-weight:600;color:var(--primary-dark);">🪙</a>
+    <a href="/settings.html" class="icon-btn">계정</a>
+  </div>
 </div>
 
 <div class="container">
@@ -60,11 +70,12 @@
       <div class="ic">🔮</div>
       <p>이번 달 기록이 아직 없어요.</p>
     </div>
+    <p class="note">코인으로 연 풀이는 이곳에 저장되어 언제든 다시 볼 수 있어요.<br/>삭제가 필요하면 설정의 회원 탈퇴 문의로 요청해 주세요.</p>
   </div>
 </div>
 
 <script type="module">
-import { getSb, getSession, fmtDate, showToast, renderBottomNav } from '/js/app.js';
+import { getSb, getSession, fmtDate, showToast, renderBottomNav, claimFreeCoins, renderCoinBadge } from '/js/app.js';
 
 renderBottomNav('/history.html');
 
@@ -75,9 +86,12 @@ async function init() {
   const session = await getSession();
   if (!session) {
     document.getElementById('gate').style.display = 'block';
+    await renderCoinBadge(document.getElementById('coinBadge'));
     return;
   }
   document.getElementById('content').style.display = 'block';
+  await claimFreeCoins(session);
+  await renderCoinBadge(document.getElementById('coinBadge'));
   await loadMonth(session);
 
   document.getElementById('prevM').addEventListener('click', () => {
@@ -116,7 +130,7 @@ async function loadMonth(session) {
 
   renderStats(data || []);
   renderCalendar(year, month, data || []);
-  renderList(data || [], session);
+  renderList(data || []);
 }
 
 function renderStats(rows) {
@@ -164,7 +178,10 @@ function renderCalendar(year, month, rows) {
   }
 }
 
-function renderList(rows, session) {
+// textContent-safe: escape anything that came from the user or the AI
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function renderList(rows) {
   const list = document.getElementById('histList');
   const empty = document.getElementById('emptyList');
   list.innerHTML = '';
@@ -173,36 +190,26 @@ function renderList(rows, session) {
 
   rows.forEach(r => {
     const card = r.tarot_cards || {};
-    let readingSnippet = '';
+    let reading = '';
     if (r.memo) {
-      try { readingSnippet = JSON.parse(r.memo).reading || ''; } catch {}
+      try { reading = JSON.parse(r.memo).reading || ''; } catch {}
     }
     const item = document.createElement('div');
     item.className = 'hist-item';
+    item.style.flexWrap = 'wrap';
     item.innerHTML = `
-      <img class="thumb" src="${card.image_url || ''}" alt=""/>
+      <img class="thumb" src="${esc(card.image_url)}" alt=""/>
       <div class="hi-body">
         <div class="hi-date">${fmtDate(r.created_at)}</div>
-        <div class="hi-name">${card.name || ''} <span class="muted small">· ${card.keyword || ''}</span></div>
-        <div class="hi-mood">${r.mood_input ? '"' + r.mood_input + '"' : ''}</div>
-        ${readingSnippet ? `<div class="hi-reading small muted mt-8">${readingSnippet}</div>` : ''}
+        <div class="hi-name">${esc(card.name)} <span class="muted small">· ${esc(card.keyword)}</span></div>
+        <div class="hi-mood">${r.mood_input ? '“' + esc(r.mood_input) + '”' : ''}</div>
       </div>
-      <div class="hi-actions">
-        <button data-id="${r.id}" class="delBtn" title="삭제">🗑️</button>
-      </div>
+      <details class="hist-detail" style="flex-basis:100%;">
+        <summary>풀이 전체 보기 ▾</summary>
+        <div class="hist-reading-full"><p>${esc(reading || '(저장된 풀이가 없어요)')}</p></div>
+      </details>
     `;
     list.appendChild(item);
-  });
-
-  list.querySelectorAll('.delBtn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('이 기록을 삭제할까요?')) return;
-      const sb = await getSb();
-      const { error } = await sb.from('readings').delete().eq('id', btn.dataset.id);
-      if (error) { showToast('삭제에 실패했어요.'); return; }
-      showToast('삭제했어요.');
-      loadMonth(session);
-    });
   });
 }
 

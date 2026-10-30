@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-<title>OZ 무의식타로</title>
+<title>OZ 내면 명상 타로</title>
 <link rel="stylesheet" href="/css/style.css"/>
 <link rel="manifest" href="/manifest.json"/>
 <meta name="theme-color" content="#c17148"/>
@@ -13,7 +13,7 @@
   .home-wrap { display: flex; flex-direction: column; min-height: calc(100dvh - 84px); }
   .home-main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; gap: 20px; text-align: center; }
   .home-title { font-size: 24px; line-height: 1.4; }
-  .home-sub { font-size: 13.5px; color: var(--muted-foreground); }
+  .home-sub { font-size: 13.5px; color: var(--muted-foreground); line-height: 1.7; }
   .home-input-bar { border-top: 0.8px solid var(--border); background: rgba(255,255,255,.6); padding: 16px; position: sticky; bottom: 84px; }
   .input-row { display: flex; align-items: flex-end; gap: 10px; background: var(--card); border: 0.8px solid var(--border); border-radius: 20px; padding: 10px 10px 10px 16px; max-width: 560px; margin: 0 auto; }
   .input-row textarea { flex: 1; resize: none; border: none; background: transparent; font-family: inherit; font-size: 14px; line-height: 1.5; max-height: 100px; outline: none; }
@@ -21,16 +21,17 @@
   .send-btn:disabled { background: var(--muted); color: var(--muted-foreground); }
   .footer-credit { text-align: center; padding: 6px 0 4px; font-size: 10px; color: rgba(140,128,114,.5); }
   .footer-credit a { color: rgba(140,128,114,.7); }
-  .limit-box { text-align: center; padding: 40px 20px; }
-  .limit-box .ic { font-size: 34px; margin-bottom: 12px; }
+  .coin-pill { font-weight: 600; color: var(--primary-dark); }
+  .price-note { font-size: 12px; color: var(--muted-foreground); text-align: center; margin: 8px auto 0; max-width: 560px; }
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <a href="/index.html" class="brand">OZ <span>✦</span> 무의식타로</a>
+  <a href="/index.html" class="brand">OZ <span>✦</span> 내면 명상 타로</a>
   <div class="topbar-actions">
-    <span class="badge badge-free" id="roleBadge">불러오는 중</span>
+    <a href="/coins.html" class="icon-btn coin-pill" id="coinBadge">🪙</a>
+    <a href="/settings.html" class="icon-btn">계정</a>
   </div>
 </div>
 
@@ -38,29 +39,23 @@
   <div class="home-main" id="moodView">
     <div>
       <h1 class="home-title">오늘 어떤 감정을<br/>느끼고 계신가요?</h1>
-      <p class="home-sub mt-8">마음을 나눠주시면 카드가 말을 건넵니다</p>
+      <p class="home-sub mt-8">마음을 나눠주시면 카드가 말을 건넵니다<br/>카드를 뽑는 건 무료, 풀이를 여는 데 <strong>코인 1개</strong>가 들어가요</p>
     </div>
     <div class="chip-grid" id="emotionChips"></div>
   </div>
 
-  <div class="limit-box" id="gateBox" style="display:none;">
-    <div class="ic" id="gateIcon">🔒</div>
-    <p><strong id="gateTitle"></strong></p>
-    <p class="muted small mt-8" id="gateDesc"></p>
-    <div style="max-width:280px;margin:20px auto 0;display:flex;flex-direction:column;gap:10px;" id="gateActions"></div>
-  </div>
-
   <div class="home-input-bar" id="inputBar">
     <div class="input-row">
-      <textarea id="emotionInput" rows="1" placeholder="지금 느끼는 감정을 편하게 적어보세요..."></textarea>
+      <textarea id="emotionInput" rows="1" maxlength="500" placeholder="지금 느끼는 감정을 편하게 적어보세요..."></textarea>
       <button class="send-btn" id="drawBtn" disabled>↑</button>
     </div>
+    <p class="price-note" id="priceNote"></p>
   </div>
   <p class="footer-credit">© 주식회사 오즈마(ozma) · 문의 <a href="mailto:ozmaj@naver.com">ozmaj@naver.com</a></p>
 </div>
 
 <script type="module">
-import { getSession, getMember, renderBottomNav } from '/js/app.js';
+import { getSb, getSession, getMember, renderBottomNav, claimFreeCoins, renderCoinBadge, getPrice, showToast } from '/js/app.js';
 
 renderBottomNav('/index.html');
 
@@ -94,28 +89,39 @@ input.addEventListener('input', () => {
   drawBtn.disabled = !input.value.trim();
 });
 
-function showGate({ icon, title, desc, actions }) {
-  document.getElementById('moodView').style.display = 'none';
-  document.getElementById('inputBar').style.display = 'none';
-  document.getElementById('gateIcon').textContent = icon;
-  document.getElementById('gateTitle').textContent = title;
-  document.getElementById('gateDesc').innerHTML = desc;
-  document.getElementById('gateActions').innerHTML = actions
-    .map(a => `<a href="${a.href}" class="btn ${a.primary ? 'btn-primary' : 'btn-outline'} btn-block">${a.label}</a>`)
-    .join('');
-  document.getElementById('gateBox').style.display = 'block';
+// 카드 뽑기는 무료다. 카드 목록(이름·그림)은 공개 데이터라 브라우저에서 바로 읽고,
+// 풀이를 열 때(reading.html)만 로그인과 코인을 확인한다.
+let cardsPromise = null;
+function loadCards() {
+  if (!cardsPromise) {
+    cardsPromise = (async () => {
+      const sb = await getSb();
+      const { data, error } = await sb
+        .from('tarot_cards')
+        .select('id')
+        .eq('card_type', '오쇼젠');
+      if (error || !data || !data.length) { cardsPromise = null; throw error || new Error('no cards'); }
+      return data;
+    })();
+  }
+  return cardsPromise;
 }
+loadCards().catch(() => {});
 
-// Students-only app: only a logged-in member with the student role on this
-// app's enrollment can draw. The server enforces the same rule on
-// /api/reading, so this is just the friendly front door.
-let isStudent = false;
-
-function draw() {
+async function draw() {
   const emotion = input.value.trim();
-  if (!emotion || !isStudent) return;
-  sessionStorage.setItem('__pending_reading', JSON.stringify({ emotion }));
-  window.location.href = '/reading.html';
+  if (!emotion) return;
+  drawBtn.disabled = true;
+  try {
+    const cards = await loadCards();
+    const card = cards[Math.floor(Math.random() * cards.length)];
+    sessionStorage.setItem('__pending_reading', JSON.stringify({ emotion, cardId: card.id }));
+    window.location.href = '/reading.html';
+  } catch (err) {
+    console.error(err);
+    showToast('카드를 불러오지 못했어요. 잠시 후 다시 시도해주세요.');
+    drawBtn.disabled = !input.value.trim();
+  }
 }
 
 drawBtn.addEventListener('click', draw);
@@ -127,36 +133,16 @@ input.addEventListener('keydown', (e) => {
 });
 
 (async () => {
-  const roleBadge = document.getElementById('roleBadge');
   const session = await getSession();
-  if (!session) {
-    roleBadge.textContent = '수강생 전용';
-    showGate({
-      icon: '🔒',
-      title: '수강생 전용 앱이에요',
-      desc: '로그인한 뒤 강의에서 안내받은<br/>수강생 인증 코드를 입력해주세요.',
-      actions: [
-        { href: '/auth.html', label: '로그인 / 회원가입', primary: true },
-        { href: '/verify-student.html', label: '수강생 인증 코드 입력' },
-      ],
-    });
-    return;
+  if (session) {
+    await getMember(session);
+    await claimFreeCoins(session);
   }
-  const member = await getMember(session);
-  if (!member) { roleBadge.textContent = '오류'; return; }
-  if (member.role !== 'student') {
-    roleBadge.textContent = '수강생 인증 필요';
-    showGate({
-      icon: '🎓',
-      title: '수강생 인증이 필요해요',
-      desc: '강의에서 안내받은 인증 코드를 입력하시면<br/>바로 이용하실 수 있어요.',
-      actions: [{ href: '/verify-student.html', label: '수강생 인증하기', primary: true }],
-    });
-    return;
-  }
-  isStudent = true;
-  roleBadge.textContent = '🎓 정규 수강생';
-  roleBadge.className = 'badge badge-student';
+  await renderCoinBadge(document.getElementById('coinBadge'));
+  try {
+    const price = await getPrice('reading');
+    document.getElementById('priceNote').textContent = `풀이 1회 🪙 ${price}코인 · 풀이는 기록에 저장돼요`;
+  } catch {}
 })();
 </script>
 </body>

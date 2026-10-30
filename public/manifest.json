@@ -1,7 +1,7 @@
 {
-  "name": "OZ 무의식타로",
-  "short_name": "무의식타로",
-  "description": "감정을 나누면 카드가 말을 건네는 무의식 타로 리딩",
+  "name": "OZ 내면 명상 타로",
+  "short_name": "내면 명상 타로",
+  "description": "감정을 나누면 카드가 말을 건네는 내면 명상 타로 리딩과 명상",
   "start_url": "/index.html",
   "display": "standalone",
   "background_color": "#f9f6f1",

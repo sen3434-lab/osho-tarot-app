@@ -3,7 +3,13 @@ const express = require('express');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 
+const { createLimiter } = require('./rate-limit');
+const { registerBilling } = require('./billing');
+
 const app = express();
+// nginx sits in front and sets X-Forwarded-For; without this every visitor
+// would look like 127.0.0.1 and share one rate-limit bucket.
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3002;
 const APP_KEY = 'oshozen-tarot';
 const CARD_TYPE = '오쇼젠';
@@ -72,10 +78,6 @@ app.get('/api/config', (req, res) => {
   });
 });
 
-function drawCard(cards) {
-  return cards[Math.floor(Math.random() * cards.length)];
-}
-
 function cardGroundingLines(card) {
   const lines = [
     `카드 이름: ${card.name}`,
@@ -136,56 +138,108 @@ async function callGemini(systemPrompt, userPrompt) {
 }
 
 // ---------------------------------------------------------------------
-// This app is students-only. Verified against the caller's OWN Supabase
-// row via RLS (their access token), so no service-role key is needed and a
-// request can never read someone else's enrollment. Hiding the UI alone
-// isn't enough — anyone could call /api/reading directly.
+// Coins. Every call below is made WITH THE USER'S OWN TOKEN, so Supabase
+// row-level security decides what they can see — this server holds no admin
+// key. The reading is generated first and the coin is charged only after it
+// exists, in one database step together with saving it to the user's history.
 // ---------------------------------------------------------------------
-async function requireStudent(req) {
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token) {
-    const err = new Error('로그인이 필요해요.');
-    err.status = 401;
-    throw err;
-  }
-  const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
+const COIN_ITEM = 'reading';
+
+function sbFetch(pathAndQuery, token, init = {}) {
+  return fetch(`${process.env.SUPABASE_URL}${pathAndQuery}`, {
+    ...init,
+    headers: {
+      apikey: process.env.SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+      ...(init.headers || {}),
+    },
   });
-  const { data: userData, error: userErr } = await sb.auth.getUser(token);
-  if (userErr || !userData?.user) {
-    const err = new Error('로그인이 필요해요.');
-    err.status = 401;
-    throw err;
-  }
-  const { data: enrollment } = await sb
-    .from('enrollments')
-    .select('role')
-    .eq('member_id', userData.user.id)
-    .eq('app_key', APP_KEY)
-    .maybeSingle();
-  if (!enrollment || enrollment.role !== 'student') {
-    const err = new Error('수강생 인증이 필요해요.');
-    err.status = 403;
-    throw err;
+}
+
+class HttpError extends Error {
+  constructor(status, code, extra = {}) {
+    super(code);
+    this.status = status;
+    this.body = { error: code, ...extra };
   }
 }
 
-// ---------------------------------------------------------------------
-// POST /api/reading — draws a card for the given emotion and returns an
-// AI interpretation. Students only. Saving to history (the `readings`
-// table) happens client-side when the user taps "저장".
-// ---------------------------------------------------------------------
-app.post('/api/reading', async (req, res) => {
+async function requireUser(req) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) throw new HttpError(401, 'login_required');
+  const r = await sbFetch('/auth/v1/user', token);
+  if (!r.ok) throw new HttpError(401, 'login_required');
+  return { token, user: await r.json() };
+}
+
+let priceCache = { coins: 1, at: 0 };
+async function readingPrice(token) {
+  if (Date.now() - priceCache.at < 5 * 60 * 1000) return priceCache.coins;
   try {
-    await requireStudent(req);
-  } catch (err) {
-    return res.status(err.status || 500).json({ error: err.message });
+    const r = await sbFetch(`/rest/v1/coin_prices?app_key=eq.${APP_KEY}&item=eq.${COIN_ITEM}&select=coins`, token);
+    const rows = r.ok ? await r.json() : [];
+    if (rows[0]?.coins > 0) priceCache = { coins: rows[0].coins, at: Date.now() };
+  } catch (e) {
+    console.error('price lookup failed, using cached/default', e);
+  }
+  return priceCache.coins;
+}
+
+async function walletBalance(token) {
+  const r = await sbFetch('/rest/v1/wallets?select=balance', token);
+  if (!r.ok) throw new HttpError(502, 'wallet_unavailable');
+  const rows = await r.json();
+  return rows[0]?.balance ?? 0;
+}
+
+// Google Play coin packs (see billing.js). Valid product ids come from the
+// public coin_products table so a price/pack change needs no redeploy.
+let productCache = { ids: [], at: 0 };
+async function activeProductIds() {
+  if (Date.now() - productCache.at < 60 * 1000 && productCache.ids.length) return productCache.ids;
+  const r = await fetch(`${process.env.SUPABASE_URL}/rest/v1/coin_products?active=eq.true&select=product_id`, {
+    headers: { apikey: process.env.SUPABASE_ANON_KEY },
+  });
+  if (!r.ok) return productCache.ids;
+  productCache = { ids: (await r.json()).map((p) => p.product_id), at: Date.now() };
+  return productCache.ids;
+}
+registerBilling(app, {
+  packageName: 'com.ozma.oshozentarot',
+  requireUser, HttpError,
+  limiter: createLimiter(),
+  products: activeProductIds,
+});
+
+// ---------------------------------------------------------------------
+// POST /api/reading — AI interpretation of the card the person drew (the draw
+// itself is free and happens in the browser), 1 coin, saved to their history.
+// ---------------------------------------------------------------------
+app.post('/api/reading', createLimiter(), async (req, res) => {
+  const body = req.body || {};
+  const emotion = String(body.emotion || '').trim().slice(0, 500);
+  if (!emotion) {
+    return res.status(400).json({ error: 'emotion is required' });
+  }
+  if (!Number.isInteger(body.cardId)) {
+    return res.status(400).json({ error: 'card is required' });
   }
 
-  const { emotion } = req.body || {};
-  if (!emotion || !emotion.trim()) {
-    return res.status(400).json({ error: 'emotion is required' });
+  // Login and balance are checked BEFORE spending AI money.
+  let token;
+  try {
+    ({ token } = await requireUser(req));
+    const cost = await readingPrice(token);
+    const balance = await walletBalance(token);
+    if (balance < cost) {
+      return res.status(402).json({ error: 'insufficient_coins', balance, cost });
+    }
+  } catch (err) {
+    if (err instanceof HttpError) return res.status(err.status).json(err.body);
+    console.error('auth/balance check failed', err);
+    return res.status(502).json({ error: 'wallet_unavailable' });
   }
 
   try {
@@ -193,9 +247,12 @@ app.post('/api/reading', async (req, res) => {
     if (!cards.length) {
       return res.status(503).json({ error: '카드 데이터를 아직 불러올 수 없어요.' });
     }
-    const card = drawCard(cards);
+    const card = cards.find((c) => c.id === body.cardId);
+    if (!card) {
+      return res.status(400).json({ error: 'unknown card' });
+    }
 
-    const systemPrompt = `당신은 무의식 타로에 깊이 정통한, 따뜻하고 지혜로운 타로 리더입니다. 무의식 타로는 명상, 깨달음, 현재 순간의 의식, 그리고 내면 깊은 곳의 무의식에 초점을 맞춘 특별한 덱으로, 생생한 수채화 이미지들로 가득합니다.
+    const systemPrompt = `당신은 내면 명상 타로에 깊이 정통한, 따뜻하고 지혜로운 타로 리더입니다. 내면 명상 타로는 명상, 깨달음, 현재 순간의 의식, 그리고 내면 깊은 곳에 초점을 맞춘 특별한 덱으로, 생생한 수채화 이미지들로 가득합니다.
 
 규칙:
 - 아래 전달되는 카드 데이터는 참고 자료입니다. 항목명을 그대로 나열하지 말고 자연스러운 이야기로 풀어내세요.
@@ -241,18 +298,44 @@ app.post('/api/reading', async (req, res) => {
 ${cardGroundingLines(card)}`;
 
     const parsed = await callGemini(systemPrompt, userPrompt);
+    const cardOut = {
+      id: card.id,
+      cardNum: card.card_num,
+      name: card.name,
+      arcana: isMajor(card.card_num) ? 'Major' : 'Minor',
+      topLabel: suitLabel(card.name, card.card_num),
+      keyword: card.keyword,
+      imageUrl: card.image_url,
+    };
+
+    // Save to the user's history AND charge, in one database step (all or
+    // nothing). The reading is only handed over if this succeeds.
+    const saved = await sbFetch('/rest/v1/rpc/save_reading_with_spend', token, {
+      method: 'POST',
+      body: JSON.stringify({
+        p_app_key: APP_KEY,
+        p_card_id: card.id,
+        p_mood: emotion,
+        p_memo: JSON.stringify({ reading: parsed.interpretation }),
+      }),
+    });
+    if (!saved.ok) {
+      console.error('save_reading_with_spend failed', saved.status, await saved.text());
+      return res.status(502).json({ error: 'save_failed' });
+    }
+    const outcome = await saved.json();
+    if (!outcome.ok) {
+      const status = outcome.reason === 'insufficient_coins' ? 402 : 400;
+      return res.status(status).json({ error: outcome.reason, balance: outcome.balance, cost: outcome.cost });
+    }
+
     res.json({
       interpretation: parsed.interpretation,
-      card: {
-        id: card.id,
-        cardNum: card.card_num,
-        name: card.name,
-        arcana: isMajor(card.card_num) ? 'Major' : 'Minor',
-        topLabel: suitLabel(card.name, card.card_num),
-        keyword: card.keyword,
-        imageUrl: card.image_url,
-      },
+      card: cardOut,
       emotion,
+      balance: outcome.balance,
+      cost: outcome.cost,
+      readingId: outcome.reading_id,
     });
   } catch (err) {
     console.error('Error creating tarot reading', err);
@@ -263,5 +346,5 @@ ${cardGroundingLines(card)}`;
 app.use(express.static(path.join(__dirname, 'public'), { dotfiles: 'allow' }));
 
 app.listen(PORT, () => {
-  console.log(`Unconscious Tarot App running at http://localhost:${PORT}`);
+  console.log(`Inner Meditation Tarot App running at http://localhost:${PORT}`);
 });

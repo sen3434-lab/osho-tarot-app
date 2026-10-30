@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-<title>OZ 무의식타로 · 리딩</title>
+<title>OZ 내면 명상 타로 · 리딩</title>
 <link rel="stylesheet" href="/css/style.css"/>
 <link rel="manifest" href="/manifest.json"/>
 <meta name="theme-color" content="#c17148"/>
@@ -16,9 +16,12 @@
   .card-name-block { text-align: center; margin-top: 14px; }
   .card-name-block .ko { font-family: 'Noto Serif KR', serif; font-size: 17px; }
   .card-name-block .en { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted-foreground); margin-top: 2px; }
-  .cursor-blink { display: inline-block; width: 2px; height: 14px; background: var(--primary); margin-left: 2px; vertical-align: middle; animation: blink 1s step-end infinite; }
-  @keyframes blink { 50% { opacity: 0; } }
   .new-draw-cta { text-align: center; padding-top: 20px; }
+  .pay-gate { text-align: center; padding: 26px 20px; margin-top: 22px; background: var(--secondary); border-radius: 16px; }
+  .pay-gate .ic { font-size: 28px; margin-bottom: 8px; }
+  .pay-gate h2 { font-size: 16px; }
+  .pay-gate p { font-size: 13px; line-height: 1.7; color: var(--muted-foreground); margin-top: 8px; }
+  .saved-note { text-align: center; font-size: 12px; color: var(--muted-foreground); margin-top: 18px; }
 </style>
 </head>
 <body>
@@ -26,17 +29,12 @@
 <div class="r-header">
   <a href="/index.html">← 돌아가기</a>
   <div class="r-actions">
-    <button class="icon-btn" id="shareBtn">공유</button>
-    <button class="icon-btn" id="saveBtn">저장</button>
+    <button class="icon-btn" id="shareBtn" style="display:none;">공유</button>
+    <a href="/coins.html" class="icon-btn" id="coinBadge" style="font-weight:600;color:var(--primary-dark);">🪙</a>
   </div>
 </div>
 
 <div class="container" style="padding-top:8px;">
-  <div id="loadingView" class="center" style="padding: 60px 20px;">
-    <div class="spinner"></div>
-    <p class="muted small mt-16">타로가 카드를 들여다보고 있어요...</p>
-  </div>
-
   <div id="resultView" style="display:none;">
     <div class="tarot-card lg" id="tarotCard">
       <div class="tarot-card-inner">
@@ -58,8 +56,23 @@
       <div class="txt" id="emotionText"></div>
     </div>
 
+    <div id="readingLoading" class="center" style="padding: 30px 20px;">
+      <div class="spinner"></div>
+      <p class="muted small mt-16">카드의 이야기를 읽고 있어요...</p>
+    </div>
+
+    <div id="payGate" class="pay-gate" style="display:none;">
+      <div class="ic" id="gateIc">🔒</div>
+      <h2 id="gateTitle"></h2>
+      <p id="gateDesc"></p>
+      <a href="#" class="btn btn-primary mt-16" id="gateBtn"></a>
+      <p class="small muted mt-16" id="gateRetryNote" style="display:none;">코인은 차감되지 않았어요.</p>
+      <button class="btn btn-outline mt-16" id="gateRetryBtn" style="display:none;">다시 시도하기</button>
+    </div>
+
     <div id="summaryBlock" class="reading-summary" style="display:none;"></div>
     <div id="sectionsBlock"></div>
+    <p class="saved-note" id="savedNote" style="display:none;">풀이는 <a href="/history.html" style="color:var(--primary-dark);font-weight:600;">기록</a>에 저장됐어요.</p>
 
     <div class="new-draw-cta">
       <a href="/index.html" class="btn btn-primary">새 카드 뽑기</a>
@@ -68,25 +81,26 @@
 
   <div id="errorView" style="display:none;" class="empty-state">
     <div class="ic">🔮</div>
-    <p>리딩을 불러오지 못했어요.</p>
+    <p>카드를 불러오지 못했어요.</p>
     <a href="/index.html" class="btn btn-primary mt-16">홈으로</a>
   </div>
 </div>
 
 <script type="module">
-import { getSb, getSession, showToast } from '/js/app.js';
+import { getSb, getSession, showToast, claimFreeCoins, renderCoinBadge, gateMessage } from '/js/app.js';
 
 const raw = sessionStorage.getItem('__pending_reading');
-const loadingView = document.getElementById('loadingView');
 const resultView = document.getElementById('resultView');
 const errorView = document.getElementById('errorView');
+const readingLoading = document.getElementById('readingLoading');
+const payGate = document.getElementById('payGate');
 
 let currentCard = null;
 let currentEmotion = '';
+let currentCardId = null;
 let currentInterpretation = '';
 
 function showError() {
-  loadingView.style.display = 'none';
   resultView.style.display = 'none';
   errorView.style.display = 'block';
 }
@@ -94,11 +108,34 @@ function showError() {
 function renderCard(card) {
   document.getElementById('tcArcana').textContent = card.arcana === 'Major' ? 'MAJOR' : 'MINOR';
   document.getElementById('tcNum').textContent = String(card.cardNum).padStart(2, '0');
-  document.getElementById('tcImg').src = card.imageUrl;
+  document.getElementById('tcImg').src = card.imageUrl || '';
   document.getElementById('tcImg').alt = card.name;
   document.getElementById('tcNameKo').textContent = card.name;
   document.getElementById('cardNameKo2').textContent = card.name;
   document.getElementById('cardTopLabel2').textContent = card.topLabel || '';
+}
+
+// 카드 이름이 "{무늬} {숫자} · {키워드}" 꼴인지에 따라 메이저/마이너를 가린다 (서버와 같은 규칙).
+function isMajor(num) { return num <= 23; }
+function topLabel(name, num) {
+  if (isMajor(num)) return '메이저 아르카나';
+  const [suitRank] = String(name).split(' · ');
+  return `마이너 아르카나 · ${suitRank || ''}`;
+}
+
+async function loadCard(id) {
+  const sb = await getSb();
+  const { data, error } = await sb
+    .from('tarot_cards')
+    .select('id, card_num, name, keyword, image_url')
+    .eq('id', id)
+    .maybeSingle();
+  if (error || !data) throw error || new Error('card not found');
+  return {
+    id: data.id, cardNum: data.card_num, name: data.name, keyword: data.keyword,
+    arcana: isMajor(data.card_num) ? 'Major' : 'Minor',
+    topLabel: topLabel(data.name, data.card_num), imageUrl: data.image_url,
+  };
 }
 
 function renderInterpretation(text) {
@@ -134,65 +171,109 @@ function renderInterpretation(text) {
     divider.textContent = '카드의 이야기';
     sectionsBlock.appendChild(divider);
   }
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   sections.forEach(s => {
     const el = document.createElement('div');
     el.className = 'reading-section';
-    el.innerHTML = (s.header ? `<div class="rs-header">${s.header}</div>` : '') +
-      `<div class="rs-body${s.header ? '' : ' center serif'}">${s.body}</div>`;
+    el.innerHTML = (s.header ? `<div class="rs-header">${esc(s.header)}</div>` : '') +
+      `<div class="rs-body${s.header ? '' : ' center serif'}">${esc(s.body)}</div>`;
     sectionsBlock.appendChild(el);
   });
 }
 
-async function run() {
-  if (!raw) { window.location.href = '/index.html'; return; }
-  sessionStorage.removeItem('__pending_reading');
-  let emotion;
-  try {
-    ({ emotion } = JSON.parse(raw));
-  } catch {
-    window.location.href = '/index.html';
-    return;
-  }
-  currentEmotion = emotion;
-  document.getElementById('emotionText').textContent = `"${emotion}"`;
+function showGate(status) {
+  readingLoading.style.display = 'none';
+  const g = gateMessage(status);
+  document.getElementById('gateIc').textContent = status === 401 ? '🔒' : '🪙';
+  document.getElementById('gateTitle').textContent = g.title;
+  document.getElementById('gateDesc').textContent = g.desc;
+  const btn = document.getElementById('gateBtn');
+  btn.textContent = g.btn;
+  btn.href = g.href;
+  btn.style.display = '';
+  document.getElementById('gateRetryNote').style.display = 'none';
+  document.getElementById('gateRetryBtn').style.display = 'none';
+  payGate.style.display = 'block';
+}
 
+function showRetry(message) {
+  readingLoading.style.display = 'none';
+  document.getElementById('gateIc').textContent = '🌙';
+  document.getElementById('gateTitle').textContent = message;
+  document.getElementById('gateDesc').textContent = '';
+  document.getElementById('gateBtn').style.display = 'none';
+  document.getElementById('gateRetryNote').style.display = 'block';
+  const retry = document.getElementById('gateRetryBtn');
+  retry.style.display = 'inline-flex';
+  retry.onclick = () => loadReading();
+  payGate.style.display = 'block';
+}
+
+async function loadReading() {
+  payGate.style.display = 'none';
+  readingLoading.style.display = 'block';
+
+  const session = await getSession();
+  if (!session) { showGate(401); return; }
   try {
-    const session = await getSession();
-    if (!session) { window.location.href = '/index.html'; return; }
     const res = await fetch('/api/reading', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer ' + session.access_token,
-      },
-      body: JSON.stringify({ emotion }),
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
+      body: JSON.stringify({ emotion: currentEmotion, cardId: currentCardId }),
     });
-    if (res.status === 401 || res.status === 403) {
-      showToast('수강생 인증이 필요해요.');
-      setTimeout(() => { window.location.href = '/index.html'; }, 900);
+    if (res.status === 401 || res.status === 402) { showGate(res.status); return; }
+    if (res.status === 429) {
+      const { error } = await res.json().catch(() => ({}));
+      showRetry(error || '요청이 너무 많아요. 잠시 후 다시 시도해주세요.');
       return;
     }
     if (!res.ok) throw new Error('reading failed');
     const data = await res.json();
-    currentCard = data.card;
     currentInterpretation = data.interpretation;
+    sessionStorage.removeItem('__pending_reading');
 
-    loadingView.style.display = 'none';
-    resultView.style.display = 'block';
-    renderCard(data.card);
-    requestAnimationFrame(() => {
-      document.getElementById('tarotCard').classList.add('flipped');
-    });
-    setTimeout(() => renderInterpretation(data.interpretation), 500);
+    readingLoading.style.display = 'none';
+    renderInterpretation(data.interpretation);
+    document.getElementById('shareBtn').style.display = '';
+    document.getElementById('savedNote').style.display = 'block';
+    await renderCoinBadge(document.getElementById('coinBadge'));
+    showToast(`🪙 코인 ${data.cost}개를 썼어요 · 기록에 저장됐어요`, 3200);
   } catch (err) {
     console.error(err);
-    showError();
+    showRetry('지금은 풀이를 불러오지 못했어요.');
   }
 }
 
+async function run() {
+  if (!raw) { window.location.href = '/index.html'; return; }
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { window.location.href = '/index.html'; return; }
+  currentEmotion = String(parsed.emotion || '');
+  currentCardId = Number.isInteger(parsed.cardId) ? parsed.cardId : null;
+  if (!currentEmotion || currentCardId == null) { window.location.href = '/index.html'; return; }
+  document.getElementById('emotionText').textContent = `"${currentEmotion}"`;
+
+  const session = await getSession();
+  if (session) await claimFreeCoins(session);
+  await renderCoinBadge(document.getElementById('coinBadge'));
+
+  try {
+    currentCard = await loadCard(currentCardId);
+  } catch (err) {
+    console.error(err);
+    showError();
+    return;
+  }
+  resultView.style.display = 'block';
+  renderCard(currentCard);
+  requestAnimationFrame(() => document.getElementById('tarotCard').classList.add('flipped'));
+
+  await loadReading();
+}
+
 document.getElementById('shareBtn').addEventListener('click', async () => {
-  if (!currentCard) return;
-  const title = `무의식 타로 — ${currentCard.name}`;
+  if (!currentCard || !currentInterpretation) return;
+  const title = `내면 명상 타로 — ${currentCard.name}`;
   const text = `${currentCard.name}\n"${currentEmotion}"\n\n${currentInterpretation}`;
   if (navigator.share) {
     try { await navigator.share({ title, text }); return; } catch {}
@@ -202,30 +283,6 @@ document.getElementById('shareBtn').addEventListener('click', async () => {
     showToast('클립보드에 복사했어요.');
   } catch {
     showToast('공유에 실패했어요.');
-  }
-});
-
-document.getElementById('saveBtn').addEventListener('click', async () => {
-  if (!currentCard) return;
-  const session = await getSession();
-  if (!session) {
-    showToast('기록 저장은 로그인 후 이용하실 수 있어요.');
-    setTimeout(() => window.location.href = '/auth.html', 900);
-    return;
-  }
-  const sb = await getSb();
-  const { error } = await sb.from('readings').insert({
-    user_id: session.user.id,
-    card_id: currentCard.id,
-    mood_input: currentEmotion,
-    memo: JSON.stringify({ reading: currentInterpretation }),
-    app_key: 'oshozen-tarot',
-  });
-  if (error) {
-    console.error(error);
-    showToast('저장에 실패했어요.');
-  } else {
-    showToast('기록에 저장했어요 ✓');
   }
 });
 

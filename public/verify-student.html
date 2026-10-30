@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>OZ 무의식타로 · 수강생 인증</title>
+<title>OZ 내면 명상 타로 · 수강생 인증</title>
 <link rel="stylesheet" href="/css/style.css"/>
 <link rel="manifest" href="/manifest.json"/>
-<meta name="theme-color" content="#c17148"/>
+<meta name="theme-color" content="#bc6338"/>
 <link rel="icon" href="/icons/icon-192.png"/>
 <link rel="apple-touch-icon" href="/icons/icon-192.png"/>
 <style>
@@ -23,10 +23,10 @@
 <div class="auth-wrap">
   <div class="center" style="font-size:30px;margin-bottom:8px;">🎓</div>
   <div class="auth-title">정규 수강생 인증</div>
-  <div class="auth-sub">강의에서 안내받은 인증 코드를 입력하시면<br/>모든 기능을 무제한으로 이용하실 수 있어요</div>
+  <div class="auth-sub">강의에서 안내받은 인증 코드를 입력하시면<br/>정규 수강생으로 등록되고 코인이 지급돼요</div>
 
   <div id="doneBox" class="done-box" style="display:none;">
-    🎓 이미 정규 수강생으로 인증되어 있어요.<br/>모든 기능을 무제한으로 이용하실 수 있습니다.
+    🎓 이미 정규 수강생으로 인증되어 있어요.<br/>코인은 보유 코인 화면에서 확인하실 수 있어요.
     <div style="margin-top:16px;"><a href="/index.html" class="btn btn-primary btn-block">앱으로 돌아가기</a></div>
   </div>
 
@@ -104,7 +104,7 @@ form.addEventListener('submit', async (e) => {
     showError(MESSAGES[data] || MESSAGES.invalid);
   } else {
     okMsg.style.display = 'block';
-    okMsg.textContent = '인증 완료! 정규 수강생 혜택이 적용되었습니다 ✓';
+    okMsg.textContent = '인증 완료! 수강생 코인이 지급되었어요 🪙';
     submitBtn.textContent = '완료';
     setTimeout(() => window.location.href = '/index.html', 1200);
     return;
