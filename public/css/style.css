@@ -389,20 +389,30 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--border);
 }
 
-.reading-section { margin-bottom: 22px; }
+.reading-section { margin-bottom: 28px; }
 .reading-section .rs-header {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: rgba(140,128,114,.8);
-  font-weight: 500;
-  margin-bottom: 6px;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--primary-dark);
+  font-weight: 700;
+  margin-bottom: 10px;
+  padding-left: 9px;
+  border-left: 3px solid var(--primary);
 }
 .reading-section .rs-body {
-  font-size: 14px;
+  font-size: 14.5px;
   line-height: 1.95;
   color: rgba(42,35,29,.88);
   white-space: pre-wrap;
+  word-break: keep-all;
+}
+.reading-section .rs-body.center { margin-top: 6px; line-height: 2; }
+.reading-section .rs-body strong,
+.reading-summary strong,
+.hist-reading-full strong {
+  font-weight: 700;
+  color: var(--primary-dark);
+  background: linear-gradient(transparent 62%, rgba(193,113,72,.18) 62%);
 }
 
 .hist-item { display: flex; gap: 12px; padding: 14px 0; border-bottom: 0.8px solid var(--border); }

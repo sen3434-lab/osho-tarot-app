@@ -1,4 +1,4 @@
-const CACHE_NAME = 'osho-tarot-v4';
+const CACHE_NAME = 'osho-tarot-v5';
 const APP_SHELL = [
   '/index.html',
   '/reading.html',

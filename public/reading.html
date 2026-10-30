@@ -94,7 +94,7 @@
 </div>
 
 <script type="module">
-import { getSb, getSession, showToast, claimFreeCoins, renderCoinBadge, gateMessage } from '/js/app.js';
+import { getSb, getSession, showToast, claimFreeCoins, renderCoinBadge, gateMessage, boldHtml, plainReading } from '/js/app.js';
 
 const raw = sessionStorage.getItem('__pending_reading');
 const resultView = document.getElementById('resultView');
@@ -153,7 +153,7 @@ function renderInterpretation(text) {
   const summaryBlock = document.getElementById('summaryBlock');
   if (summary) {
     summaryBlock.style.display = 'block';
-    summaryBlock.textContent = summary;
+    summaryBlock.innerHTML = boldHtml(summary);
   }
 
   const sections = [];
@@ -164,6 +164,11 @@ function renderInterpretation(text) {
       if (lines.join('').trim() || currentHeader !== null) sections.push({ header: currentHeader, body: lines.join('\n').trim() });
       currentHeader = line.slice(2).trim();
       lines = [];
+    } else if (line.startsWith('❖ ')) {
+      // closing line: its own centered block, not part of the last section
+      if (lines.join('').trim() || currentHeader !== null) sections.push({ header: currentHeader, body: lines.join('\n').trim() });
+      currentHeader = null;
+      lines = [line.slice(2)];
     } else {
       lines.push(line);
     }
@@ -183,7 +188,7 @@ function renderInterpretation(text) {
     const el = document.createElement('div');
     el.className = 'reading-section';
     el.innerHTML = (s.header ? `<div class="rs-header">${esc(s.header)}</div>` : '') +
-      `<div class="rs-body${s.header ? '' : ' center serif'}">${esc(s.body)}</div>`;
+      `<div class="rs-body${s.header ? '' : ' center serif'}">${boldHtml(s.body)}</div>`;
     sectionsBlock.appendChild(el);
   });
 }
@@ -284,7 +289,7 @@ async function run() {
 document.getElementById('shareBtn').addEventListener('click', async () => {
   if (!currentCard || !currentInterpretation) return;
   const title = `내면 명상 타로 — ${currentCard.name}`;
-  const text = `${currentCard.name}\n"${currentEmotion}"\n\n${currentInterpretation}`;
+  const text = `${currentCard.name}\n"${currentEmotion}"\n\n${plainReading(currentInterpretation)}`;
   if (navigator.share) {
     try { await navigator.share({ title, text }); return; } catch {}
   }

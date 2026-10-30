@@ -75,7 +75,7 @@
 </div>
 
 <script type="module">
-import { getSb, getSession, fmtDate, showToast, renderBottomNav, claimFreeCoins, renderCoinBadge } from '/js/app.js';
+import { getSb, getSession, fmtDate, showToast, renderBottomNav, claimFreeCoins, renderCoinBadge, boldHtml } from '/js/app.js';
 
 renderBottomNav('/history.html');
 
@@ -206,7 +206,7 @@ function renderList(rows) {
       </div>
       <details class="hist-detail" style="flex-basis:100%;">
         <summary>풀이 전체 보기 ▾</summary>
-        <div class="hist-reading-full"><p>${esc(reading || '(저장된 풀이가 없어요)')}</p></div>
+        <div class="hist-reading-full"><p>${boldHtml(reading ? reading.replace(/^❖ /gm, '').replace(/^◇ (.+)$/gm, '**◇ $1**') : '(저장된 풀이가 없어요)')}</p></div>
       </details>
     `;
     list.appendChild(item);

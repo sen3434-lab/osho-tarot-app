@@ -156,6 +156,18 @@ export function renderBottomNav(active) {
   document.body.appendChild(nav);
 }
 
+// AI 풀이 글을 안전한 HTML로 바꾼다: 먼저 모두 이스케이프하고, **굵게** 표시만 살린다.
+export function boldHtml(text) {
+  return String(text ?? '')
+    .replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+    .replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+}
+
+// 공유·복사용: 화면용 표시(**, ❖)를 걷어낸 평문
+export function plainReading(text) {
+  return String(text ?? '').replace(/\*\*/g, '').replace(/^❖ /gm, '');
+}
+
 export function fmtDate(d) {
   const dt = typeof d === 'string' ? new Date(d) : d;
   return `${dt.getFullYear()}년 ${dt.getMonth() + 1}월 ${dt.getDate()}일`;
